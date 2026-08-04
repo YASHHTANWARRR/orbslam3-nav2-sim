@@ -14,12 +14,12 @@ ROS 2 Jazzy, Ubuntu 24.04.
 
 Prefix is `vslam`.
 
-| Package | Owns | Mirrors |
-|---|---|---|
-| `vslam_description` | robot xacro, rviz configs 
-| `vslam_simulator` | worlds, gz launch, ros_gz bridge yaml 
-| `vslam_slam` | camera driver node, ORB-SLAM3 settings, upstream patch 
-| `vslam_bringup` | `bringup_sim.launch.py` 
+| Package | Owns |
+|---|---|
+| `vslam_description` | robot xacro, rviz configs |
+| `vslam_simulator` | worlds, gz launch, ros_gz bridge yaml |
+| `vslam_slam` | camera driver node, ORB-SLAM3 settings, upstream patch |
+| `vslam_bringup` | `bringup_sim.launch.py` |
 
 Do not create `vslam_navigation` until Nav2 actually lands. An empty package is a
 lie about what the repo does.
@@ -118,7 +118,7 @@ topic           camera/image
 Derived intrinsics — `fx = (width/2) / tan(hfov/2)`:
 
 ```
-fx = fy = 554.26     cx = 320     cy = 240
+fx = fy = 415.69     cx = 240     cy = 240
 all distortion = 0.0    (ideal sim camera, no calibration needed)
 ```
 
