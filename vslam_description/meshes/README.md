@@ -17,5 +17,5 @@ python3 vslam_description/scripts/cut_stl.py \
   vslam_description/meshes/burger_deck1.stl 62
 ```
 
-The cut leaves the top open. `gz_slim_tb3.sdf.xacro` caps it with the
-`deck_plate_visual` box, which is also what the camera mast mounts to.
+The camera mast in `gz_slim_tb3.sdf.xacro` stands directly on the mesh top
+(60.5 mm).

@@ -28,8 +28,8 @@
     <xacro:property name="wheel_r" value="0.033"/>
     <xacro:property name="wheel_cz" value="0.023"/>
 
-    <!-- deck1 mesh tops out at 60.5mm; the cap plate sits just above it -->
-    <xacro:property name="deck_z" value="0.063"/>
+    <!-- deck1 mesh tops out at 60.5mm; the bracket stands directly on it -->
+    <xacro:property name="deck_z" value="0.060"/>
     <xacro:property name="cam_z" value="0.115"/>
     <xacro:property name="mast_x" value="0.010"/>
 
@@ -83,20 +83,6 @@
             <ambient>${c_body_amb} 1</ambient>
             <diffuse>${c_body} 1</diffuse>
             <specular>0.1 0.1 0.1 1</specular>
-          </material>
-        </visual>
-
-        <!-- cap plate: closes the open top left by the mesh cut -->
-        <visual name="deck_plate_visual">
-          <pose>${body_ox} 0 ${deck_z} 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.128 0.128 0.005</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>${c_accent_amb} 1</ambient>
-            <diffuse>${c_accent} 1</diffuse>
           </material>
         </visual>
 

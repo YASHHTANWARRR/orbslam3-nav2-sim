@@ -110,7 +110,31 @@ Slim chassis: burger width, waffle-pi height. Primitive boxes, no mesh.
 **`<wheel_separation>` must match the wheel joint poses.** If they disagree,
 odometry silently reports the wrong distance and everything downstream inherits
 the error with no visible symptom. The stock waffle values are `±0.144` / `0.287`
-— both must change together.
+— both must change together. Verified: 1.54% yaw error vs ground truth over a
+200° turn (slip). A wrong separation would show as ~1.79x, not 1.5%.
+
+Geometry follows the **official ROBOTIS burger** at
+`/opt/ros/jazzy/share/turtlebot3_gazebo/models/turtlebot3_burger/model.sdf`,
+not re-derived values. Single rear caster at `x=-0.081` — improvising two
+casters caused spontaneous yaw drift.
+
+Body visual is `meshes/burger_deck1.stl`: the burger base with its upper two
+decks cut off at z=62mm (see `meshes/README.md`). The cut leaves an open top,
+capped by the `deck_plate_visual` box, which the camera mast mounts to.
+
+**Collision box bottom must sit at z=0.000, not lower.** Ground contact is at
+z=-0.010; a box reaching that far scrapes the floor.
+
+**Two paths are required on `GZ_SIM_RESOURCE_PATH`** or meshes silently fail to
+resolve and the robot renders invisible:
+
+```
+export GZ_SIM_RESOURCE_PATH=<repo root>:/opt/ros/jazzy/share/turtlebot3_gazebo/models
+```
+
+**Kill stale `gz sim` servers before testing** (`pkill -f 'gz sim'`). A running
+server holds the world name, so `gz service .../create` silently targets the old
+server with the old model — which looks exactly like a physics bug.
 
 ## Camera intrinsics
 
