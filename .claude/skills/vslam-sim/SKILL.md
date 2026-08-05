@@ -125,12 +125,17 @@ width/height   480x480
 topic           camera/image
 ```
 
-Derived intrinsics — `fx = (width/2) / tan(hfov/2)`:
+Intrinsics — **take these from Gazebo's own `/camera/camera_info`, not from the
+hand formula.** `fx = (width/2)/tan(hfov/2)` gives 415.69, but Gazebo actually
+reports 415.787; its internal conversion differs slightly. Measured values:
 
 ```
-fx = fy = 415.69     cx = 240     cy = 240
+fx = fy = 415.787    cx = 240     cy = 240
 all distortion = 0.0    (ideal sim camera, no calibration needed)
 ```
+
+To re-measure after any camera change:
+`gz topic -e -t /camera/camera_info -n 1`
 
 **These live in two places and must stay in sync:** the sensor block in
 `vslam_description/urdf/gz_slim_tb3.sdf.xacro` and
