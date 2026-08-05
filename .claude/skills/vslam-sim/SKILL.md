@@ -40,14 +40,24 @@ Three things that look broken but are not:
    `/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz`. A bare `gz sim --version` failing
    with a `GZ_CONFIG_PATH` complaint is expected, not a missing install.
    Gazebo Harmonic (`gz-sim8` 8.14.0) and `ros_gz` are installed.
-2. **Pangolin is NOT packaged for 24.04.** It must be built from source, at the
-   version `ros2_orb_slam3` pins. Newer Pangolin has API breaks. OpenCV 4.6 and
-   Eigen3 are already present.
+2. **Pangolin is NOT packaged for 24.04** — build from source. Verified working:
+   **v0.9.5**, built Release/Ninja, installed to `~/.local` (avoids sudo).
+   `orb_slam3/Thirdparty/Pangolin` in the repo is an empty placeholder the build
+   never references — Pangolin is found via `find_package`, not vendored.
+   **Because it is in `~/.local` and nothing bakes an RPATH, `~/.local/lib` must
+   be on `LD_LIBRARY_PATH`** or `mono_node_cpp` fails at load with
+   `libpango_display.so.0 => not found`. This is exported from `~/.bashrc`.
+   Build the wrapper with `--cmake-args -DCMAKE_PREFIX_PATH=$HOME/.local`.
+   OpenCV 4.6 and Eigen3 are already present.
 3. **`ros2_orb_slam3` hardcodes its own path.** `src/common.cpp` sets
    `packagePath = "ros2_ws/src/ros2_orb_slam3/"` relative to `$HOME` and derives
    the vocabulary and settings paths from it. The clone must live at
    `~/ros2_ws/src/ros2_orb_slam3`. Symlink this project into `~/ros2_ws/src/`
    rather than trying to relocate the wrapper.
+
+Ignore the `Cannot locate rosdep definition for [libcrypto]` error — the key is
+bogus in the wrapper's `package.xml`, and `libssl-dev` / `libcrypto.so.3` are
+present. `python3-natsort` is a real dependency of `mono_driver_node.py`.
 
 `nav2_minimal_tb3_sim` is installed and is the fork source for both the robot
 (`urdf/gz_waffle.sdf.xacro`) and the world (`models/turtlebot3_world/model.sdf`).
