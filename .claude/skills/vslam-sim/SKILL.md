@@ -216,6 +216,18 @@ Reuse from `nav2_minimal_tb3_sim/launch/spawn_tb3.launch.py`:
 Set `use_sim_time: true` on every node. Delay `mono_node_cpp` and the driver by
 4–6 s so the handshake does not fire into a Gazebo that has not come up yet.
 
+`vslam_simulator/launch/sim.launch.py` brings up world + robot + bridge.
+Two things that bite:
+
+- **No `robot_state_publisher`.** It requires URDF; this robot is described in
+  SDF, so it fails at startup. `odom -> base_footprint` TF comes from the
+  DiffDrive plugin through the bridge instead.
+- **Use `UnlessCondition(x)`, never `IfCondition(['not ', x])`** — the latter
+  raises `invalid condition expression ... got 'not false'`.
+
+The launch file sets `GZ_SIM_RESOURCE_PATH` itself, so no manual export is
+needed when launching this way.
+
 ## Verification discipline
 
 Gate each layer before moving to the next. Never debug two layers at once.
