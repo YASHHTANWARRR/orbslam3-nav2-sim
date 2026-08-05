@@ -17,13 +17,28 @@
 
     <xacro:property name="body_x" value="0.138"/>
     <xacro:property name="body_y" value="0.138"/>
-    <xacro:property name="body_z" value="0.141"/>
+    <!-- Collision spans z 0.000..0.066 (cap plate top). It must NOT reach down
+         to the mesh bottom at -10mm: ground contact is at z=-0.010, so a box
+         that low scrapes the floor and physics shoves the robot around. -->
+    <xacro:property name="body_z" value="0.066"/>
     <!-- mesh origin offset, from the official burger model -->
     <xacro:property name="body_ox" value="-0.032"/>
-    <xacro:property name="body_cz" value="0.0705"/>
+    <xacro:property name="body_cz" value="0.033"/>
     <xacro:property name="wheel_y" value="0.080"/>
     <xacro:property name="wheel_r" value="0.033"/>
     <xacro:property name="wheel_cz" value="0.023"/>
+
+    <!-- deck1 mesh tops out at 60.5mm; the cap plate sits just above it -->
+    <xacro:property name="deck_z" value="0.063"/>
+    <xacro:property name="cam_z" value="0.115"/>
+    <xacro:property name="mast_x" value="0.010"/>
+
+    <!-- colour scheme -->
+    <xacro:property name="c_body" value="0.10 0.28 0.32"/>
+    <xacro:property name="c_body_amb" value="0.04 0.11 0.13"/>
+    <xacro:property name="c_accent" value="0.90 0.45 0.10"/>
+    <xacro:property name="c_accent_amb" value="0.35 0.16 0.03"/>
+    <xacro:property name="c_dark" value="0.13 0.14 0.16"/>
 
     <model name="slim_tb3">
       <pose>0.0 0.0 0.0 0.0 0.0 0.0</pose>
@@ -54,18 +69,62 @@
           </geometry>
         </collision>
 
+        <!-- Burger base plate only. Upper two decks cut off at z=62mm by
+             scripts/cut_stl.py; see meshes/README.md for regeneration. -->
         <visual name="base_visual">
           <pose>${body_ox} 0 0 0 0 0</pose>
           <geometry>
             <mesh>
-              <uri>model://turtlebot3_common/meshes/bases/burger_base.stl</uri>
+              <uri>package://vslam_description/meshes/burger_deck1.stl</uri>
               <scale>0.001 0.001 0.001</scale>
             </mesh>
           </geometry>
           <material>
-            <ambient>0.15 0.15 0.17 1</ambient>
-            <diffuse>0.25 0.27 0.32 1</diffuse>
+            <ambient>${c_body_amb} 1</ambient>
+            <diffuse>${c_body} 1</diffuse>
             <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+
+        <!-- cap plate: closes the open top left by the mesh cut -->
+        <visual name="deck_plate_visual">
+          <pose>${body_ox} 0 ${deck_z} 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.128 0.128 0.005</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>${c_accent_amb} 1</ambient>
+            <diffuse>${c_accent} 1</diffuse>
+          </material>
+        </visual>
+
+        <!-- camera mast -->
+        <visual name="mast_visual">
+          <pose>${mast_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.014 0.030 ${cam_z - deck_z}</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.06 1</ambient>
+            <diffuse>${c_dark} 1</diffuse>
+          </material>
+        </visual>
+
+        <!-- bracket arm from mast to camera -->
+        <visual name="mast_arm_visual">
+          <pose>${(mast_x + 0.032) / 2} 0 ${cam_z} 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.030 0.024 0.008</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.06 1</ambient>
+            <diffuse>${c_dark} 1</diffuse>
           </material>
         </visual>
       </link>
@@ -310,8 +369,8 @@
             </box>
           </geometry>
           <material>
-            <ambient>0.5 0.15 0.05 1</ambient>
-            <diffuse>0.8 0.3 0.15 1</diffuse>
+            <ambient>${c_accent_amb} 1</ambient>
+            <diffuse>${c_accent} 1</diffuse>
           </material>
         </visual>
 
