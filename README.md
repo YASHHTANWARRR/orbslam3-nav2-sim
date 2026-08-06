@@ -375,6 +375,51 @@ The **zero stamp matters**. A stamped goal pins the planner to one instant; once
 the TF buffer moves past it, every lookup fails with *"extrapolation into the
 past"* and the goal ABORTS. Zero means "latest".
 
+### Seeing the planning
+
+With `nav:=true`, RViz loads `nav.rviz` instead of `slam.rviz`, adding everything
+the planner produces:
+
+| Display | Topic | Colour |
+|---|---|---|
+| Global plan | `/plan` | green |
+| Local plan (DWB trajectory) | `/local_plan` | yellow |
+| Global costmap | `/global_costmap/costmap` | costmap scheme |
+| Local costmap | `/local_costmap/costmap` | costmap scheme |
+| Footprint | `/local_costmap/published_footprint` | cyan |
+| Lidar | `/scan` | white points |
+| SLAM trajectory | `/orbslam3/path` | violet |
+| Ground truth | `/odom` | orange arrows |
+
+It also loads the **Navigation 2 panel** and the **GoalTool**, so you can click
+"Nav2 Goal" in the toolbar and set targets directly in the 3D view.
+
+Measured on a live goal: `/plan` carried **60 poses**, `/local_plan` **6**.
+
+Inspect the plans from the terminal instead:
+
+```bash
+ros2 topic echo /plan --once            # global NavFn path
+ros2 topic echo /local_plan --once      # DWB rollout
+ros2 topic hz /global_costmap/costmap
+```
+
+### Swapping the planner
+
+`NavFn` (Dijkstra/A*) is the default. Also installed: `nav2_smac_planner`
+(2D, hybrid-A*, lattice) and `nav2_theta_star_planner`. Change
+`planner_server.GridBased.plugin` in `vslam_navigation/config/nav2_params.yaml`:
+
+```yaml
+GridBased:
+  plugin: "nav2_smac_planner::SmacPlannerHybrid"   # feasible curved paths
+  # plugin: "nav2_theta_star_planner::ThetaStarPlanner"  # any-angle, fewer waypoints
+```
+
+`NavfnPlanner` ignores robot kinematics and produces grid-aligned paths;
+Hybrid-A* respects the turning radius, which matters more on larger robots than
+this one.
+
 Two deliberate differences from a stock TurtleBot3 Nav2 config:
 
 - **No AMCL, no map_server.** ORB-SLAM3 publishes `map → odom`, so visual SLAM

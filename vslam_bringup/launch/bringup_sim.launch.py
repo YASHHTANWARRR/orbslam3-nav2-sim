@@ -16,7 +16,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
 
@@ -77,15 +77,27 @@ def generate_launch_description():
         condition=UnlessCondition(slam),
     )
 
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        output='screen',
-        arguments=['-d', os.path.join(desc_share, 'rviz', 'slam.rviz')],
-        parameters=[{'use_sim_time': True}],
-        condition=IfCondition(rviz),
-    )
+    # Two configs: nav.rviz adds costmaps, global/local plans and the goal tool,
+    # which only exist once Nav2 is running.
+    def rviz_with(config, cond):
+        return Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', os.path.join(desc_share, 'rviz', config)],
+            parameters=[{'use_sim_time': True}],
+            condition=cond,
+        )
+
+    rviz_slam = rviz_with(
+        'slam.rviz',
+        IfCondition(PythonExpression(["'", rviz, "' == 'true' and '",
+                                      LaunchConfiguration('nav'), "' != 'true'"])))
+    rviz_nav = rviz_with(
+        'nav.rviz',
+        IfCondition(PythonExpression(["'", rviz, "' == 'true' and '",
+                                      LaunchConfiguration('nav'), "' == 'true'"])))
 
     # Delayed: Nav2's costmaps need map -> odom to exist, which only happens
     # once ORB-SLAM3 has initialised its map. Drive the robot forward after
@@ -102,4 +114,4 @@ def generate_launch_description():
     )
 
     return LaunchDescription(
-        args + [simulation, slam_stack, map_to_odom, navigation, rviz_node])
+        args + [simulation, slam_stack, map_to_odom, navigation, rviz_slam, rviz_nav])
