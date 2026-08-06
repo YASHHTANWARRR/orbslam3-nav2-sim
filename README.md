@@ -478,19 +478,67 @@ can look busy to a human and still be nearly invisible to the detector.
 
 ---
 
+## Tracking stability
+
+Monocular tracking used to collapse under Nav2: the Atlas spawned a **new map
+every few seconds**, each with its own origin and scale, so `map → odom` jumped
+and goals aborted. Two changes fixed it.
+
+**Rotation is the primary killer.** Pure rotation gives monocular SLAM no
+parallax. Nav2's defaults rotate hard and DWB spins in place to align with the
+path, so the angular limits are capped well below what the robot can do:
+
+| Parameter | Was | Now |
+|---|---|---|
+| `max_vel_theta` (DWB) | 2.0 | **0.6** |
+| `acc_lim_theta` | 3.2 | **1.2** |
+| `RotateToGoal.scale` | 32.0 | **16.0** |
+| `PathAlign.scale` | 32.0 | **40.0** |
+| `max_rotational_vel` (recovery) | 1.0 | **0.6** |
+| velocity smoother θ | 2.0 | **0.6** |
+
+The DiffDrive plugin still permits 2.84 rad/s; Nav2 deliberately uses a fraction.
+
+**More features survive sparse views** (`tb3.yaml`):
+
+| Parameter | Was | Now |
+|---|---|---|
+| `ORBextractor.nFeatures` | 1000 | **1500** |
+| `iniThFAST` | 20 | **12** |
+| `minThFAST` | 7 | **4** |
+
+**Result:** a full navigation run with **zero tracking losses** and a single map,
+versus constant re-initialisation before.
+
+## Visual-inertial mode (does not currently work)
+
+`IMU_MONOCULAR` is implemented and selectable:
+
+```bash
+ros2 launch vslam_bringup bringup_sim.launch.py use_imu:=true
+```
+
+It loads `config/tb3_imu.yaml` with correct camera-IMU extrinsics, subscribes
+`/imu` (198 Hz measured), and buffers frames until the IMU stream covers each
+timestamp before tracking.
+
+**It does not initialise on this robot.** ORB-SLAM3 reports `scale too small`
+and `IMU is not or recently initialized. Reseting active map...` in a loop.
+
+The reason is fundamental, not a tuning problem: **visual-inertial scale is only
+observable under acceleration.** A differential-drive robot cruising at near
+constant velocity in a plane is a degenerate case — the accelerometer sees little
+beyond gravity, so the scale estimate never converges. Aggressive
+speed-up/slow-down cycles were not enough.
+
+Left in place because it is correct and would work on a platform with real
+excitation (a drone, or a handheld camera). **Default is `use_imu:=false`.**
+
 ## Known limits
 
-**Monocular tracking is the weak link.** It drops on fast rotation, featureless
-views, and near walls. Every recovery re-initialises the map with a new arbitrary
-scale, silently invalidating `pose_scale` and degrading Nav2's localisation.
-
-**The fix is already half-built.** The robot has a simulated IMU publishing at
-200 Hz and already bridged to `/imu` — entirely unused. Switching ORB-SLAM3 to
-`IMU_MONOCULAR` would give metrically-scaled output, deleting the scale
-calibration step and its whole failure mode, plus far more robust tracking
-through rotation. It needs IMU measurements passed to `TrackMonocular`,
-camera-IMU extrinsics (`Tbc`) and noise parameters in the yaml, and an
-initialisation phase requiring motion excitation.
+Monocular scale is still calibrated rather than metric, and `pose_scale` remains
+valid only for the map it was measured on. Tracking is now stable enough that
+re-initialisation is rare, but it is not impossible.
 
 **No map persistence.** `System.LoadAtlasFromFile` / `SaveAtlasToFile` are
 commented out, so every run starts from scratch.

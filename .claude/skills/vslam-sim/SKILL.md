@@ -301,6 +301,38 @@ The lidar sits at `z=0.150` on a post so it clears the camera bracket
 
 Verified: two `NavigateToPose` goals SUCCEEDED, within 0.13 m and 0.23 m.
 
+## Tracking stability
+
+Symptom: Pangolin shows **several disconnected keyframe clusters** rather than
+one map, and Nav2 goals abort. That is the Atlas spawning a new map on every
+tracking loss, each with its own origin and scale, so `map -> odom` jumps.
+
+**Rotation is the primary cause** — pure rotation gives monocular SLAM no
+parallax. Nav2 angular limits are capped far below the robot's capability
+(`max_vel_theta 0.6` vs the plugin's 2.84), `RotateToGoal.scale` halved and
+`PathAlign.scale` raised so DWB prefers following the path over spinning to
+align. ORB thresholds are also loosened (`nFeatures 1500`, `iniThFAST 12`,
+`minThFAST 4`).
+
+Verified: full nav run with **zero tracking losses**, one map. Before: 11 losses.
+
+`Localization: inactive` in the RViz Nav2 panel is **expected** — it looks for
+AMCL's lifecycle node, which we deliberately do not run.
+
+## IMU_MONOCULAR does not initialise here
+
+Implemented and selectable via `use_imu:=true` (loads `config/tb3_imu.yaml`,
+correct `IMU.T_b_c1` extrinsics, frames buffered until the IMU covers each
+timestamp). ORB-SLAM3 reports `scale too small` and resets the map in a loop.
+
+**This is fundamental, not tuning.** Visual-inertial scale is only observable
+under acceleration; a diff-drive robot at near-constant velocity in a plane is
+degenerate. Do not spend more time on it without changing the motion profile.
+
+If revisiting: the frames-must-wait-for-IMU sync is the non-obvious part.
+Tracking directly in the image callback yields `Empty IMU measurements vector!!!`
+because callbacks arrive out of order.
+
 ## Verification discipline
 
 Gate each layer before moving to the next. Never debug two layers at once.
