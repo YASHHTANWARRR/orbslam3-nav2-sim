@@ -63,7 +63,26 @@ present. `python3-natsort` is a real dependency of `mono_driver_node.py`.
 (`urdf/gz_waffle.sdf.xacro`) and the world (`models/turtlebot3_world/model.sdf`).
 Fork and trim; do not model from scratch.
 
-## The `mono_node_cpp` contract
+## We do NOT use `mono_node_cpp`
+
+`vslam_slam` builds its **own** node, `src/mono_slam_node.cpp`, linking the same
+`liborb_slam3_lib.so`. Upstream's `mono_node_cpp` is driven by a Python node over
+a String handshake and publishes **no pose at all**, so it was replaced rather
+than patched — nothing in the wrapper's tree is modified.
+
+Ours subscribes directly to the bridged camera topic (no handshake, no timestep
+topic) and publishes `/orbslam3/pose`, `/orbslam3/path`, and `map -> orbslam3_camera` TF.
+
+`ros2_orb_slam3` exports no ament target, so `CMakeLists.txt` locates it by path
+(`$ENV{HOME}/ros2_ws/src/ros2_orb_slam3` for headers, `.../install/.../lib` for
+the `.so`). Include dirs must include **`orb_slam3/` itself** — `KeyFrame.h` does
+`#include "Thirdparty/DBoW2/DBoW2/BowVector.h"` relative to that.
+
+Verified working: `pose_scale` measured at **3.2068** in `textured_tb3_world`,
+and driving forward yields `+x` motion with `y,z ≈ 0`, confirming the optical→ROS
+rotation is right.
+
+## The `mono_node_cpp` contract (upstream — kept for reference)
 
 The `jazzy` branch is **monocular only** — stereo and RGBD are "TODO next version".
 
