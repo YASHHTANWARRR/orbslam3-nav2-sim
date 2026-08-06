@@ -21,6 +21,9 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
@@ -43,6 +46,12 @@ public:
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     show_viewer_ = declare_parameter<bool>("show_viewer", true);
 
+    // Nav2 needs map -> odom, not map -> camera. See publishMapToOdom().
+    publish_map_odom_ = declare_parameter<bool>("publish_map_odom", true);
+    odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
+    base_frame_ = declare_parameter<std::string>("base_frame", "base_footprint");
+    camera_link_frame_ = declare_parameter<std::string>("camera_link_frame", "camera_link");
+
     if (voc_file_.empty() || settings_file_.empty()) {
       RCLCPP_FATAL(get_logger(), "voc_file and settings_file are required");
       throw std::runtime_error("missing voc_file/settings_file");
@@ -59,6 +68,8 @@ public:
     pose_pub_ = create_publisher<nav_msgs::msg::Odometry>("/orbslam3/pose", 10);
     path_pub_ = create_publisher<nav_msgs::msg::Path>("/orbslam3/path", 10);
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     path_.header.frame_id = map_frame_;
 
     // Sensor QoS: best-effort, tolerates the bridge's reliable publisher and
@@ -159,13 +170,62 @@ private:
       tf.transform.rotation = ps.pose.orientation;
       tf_broadcaster_->sendTransform(tf);
     }
+
+    if (publish_map_odom_) {
+      Eigen::Isometry3d T_map_cam = Eigen::Isometry3d::Identity();
+      T_map_cam.translate(Eigen::Vector3d(t.x(), t.y(), t.z()));
+      T_map_cam.rotate(Eigen::Quaterniond(q.w(), q.x(), q.y(), q.z()));
+      publishMapToOdom(T_map_cam, stamp);
+    }
+  }
+
+  // Nav2 expects the localisation source to publish map -> odom: a *correction*
+  // on top of wheel odometry, not the robot pose itself. Publishing
+  // map -> base_footprint directly would fight the odom -> base_footprint that
+  // the DiffDrive plugin already broadcasts, giving base_footprint two parents.
+  //
+  //   map->odom = map->camera * (base->camera)^-1 * (odom->base)^-1
+  //
+  // base->camera and odom->base both come from TF, so the mounting offsets
+  // stay in one place (the static publishers in sim.launch.py).
+  void publishMapToOdom(
+    const Eigen::Isometry3d & T_map_cam, const builtin_interfaces::msg::Time & stamp)
+  {
+    geometry_msgs::msg::TransformStamped base_cam_msg;
+    geometry_msgs::msg::TransformStamped odom_base_msg;
+    try {
+      base_cam_msg = tf_buffer_->lookupTransform(
+        base_frame_, camera_link_frame_, tf2::TimePointZero);
+      odom_base_msg = tf_buffer_->lookupTransform(
+        odom_frame_, base_frame_, tf2::TimePointZero);
+    } catch (const tf2::TransformException & e) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "map->odom skipped, TF not ready: %s", e.what());
+      return;
+    }
+
+    const Eigen::Isometry3d T_base_cam = tf2::transformToEigen(base_cam_msg);
+    const Eigen::Isometry3d T_odom_base = tf2::transformToEigen(odom_base_msg);
+    const Eigen::Isometry3d T_map_odom =
+      T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
+
+    geometry_msgs::msg::TransformStamped out = tf2::eigenToTransform(T_map_odom);
+    out.header.stamp = stamp;
+    out.header.frame_id = map_frame_;
+    out.child_frame_id = odom_frame_;
+    tf_broadcaster_->sendTransform(out);
   }
 
   std::string voc_file_, settings_file_, image_topic_, map_frame_, camera_frame_;
+  std::string odom_frame_, base_frame_, camera_link_frame_;
   double pose_scale_{1.0};
   bool publish_tf_{true};
+  bool publish_map_odom_{true};
   bool show_viewer_{true};
   bool was_tracking_{false};
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::unique_ptr<ORB_SLAM3::System> slam_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;

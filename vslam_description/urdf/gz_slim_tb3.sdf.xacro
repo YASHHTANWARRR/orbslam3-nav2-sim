@@ -87,6 +87,21 @@
         </visual>
 
         <!-- camera mast -->
+        <!-- post carrying the lidar above the camera bracket -->
+        <visual name="lidar_post_visual">
+          <pose>-0.032 0 ${(deck_z + 0.150) / 2} 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.010</radius>
+              <length>${0.150 - deck_z}</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.06 1</ambient>
+            <diffuse>${c_dark} 1</diffuse>
+          </material>
+        </visual>
+
         <visual name="mast_visual">
           <pose>${mast_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
           <geometry>
@@ -113,6 +128,74 @@
             <diffuse>${c_dark} 1</diffuse>
           </material>
         </visual>
+      </link>
+
+      <!-- LDS lidar for Nav2 costmaps. Mounted at z=0.150 on a post so it
+           clears the camera bracket (top at z=0.119) - a lower mount would
+           put the bracket in the scan and blind the robot forward. -->
+      <link name="base_scan">
+        <pose>-0.032 0 0.150 0 0 0</pose>
+        <inertial>
+          <inertia>
+            <ixx>0.001</ixx>
+            <ixy>0.000</ixy>
+            <ixz>0.000</ixz>
+            <iyy>0.001</iyy>
+            <iyz>0.000</iyz>
+            <izz>0.001</izz>
+          </inertia>
+          <mass>0.114</mass>
+        </inertial>
+
+        <collision name="lidar_collision">
+          <geometry>
+            <cylinder>
+              <radius>0.0508</radius>
+              <length>0.055</length>
+            </cylinder>
+          </geometry>
+        </collision>
+
+        <visual name="lidar_visual">
+          <geometry>
+            <mesh>
+              <uri>model://turtlebot3_common/meshes/sensors/lds.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.05 0.05 0.06 1</ambient>
+            <diffuse>${c_dark} 1</diffuse>
+          </material>
+        </visual>
+
+        <sensor name="hls_lfcd_lds" type="gpu_lidar">
+          <always_on>true</always_on>
+          <visualize>true</visualize>
+          <update_rate>10</update_rate>
+          <topic>scan</topic>
+          <gz_frame_id>base_scan</gz_frame_id>
+          <ray>
+            <scan>
+              <horizontal>
+                <samples>360</samples>
+                <resolution>1.000000</resolution>
+                <min_angle>0.000000</min_angle>
+                <max_angle>6.280000</max_angle>
+              </horizontal>
+            </scan>
+            <range>
+              <min>0.120000</min>
+              <max>3.5</max>
+              <resolution>0.015000</resolution>
+            </range>
+            <noise>
+              <type>gaussian</type>
+              <mean>0.0</mean>
+              <stddev>0.01</stddev>
+            </noise>
+          </ray>
+        </sensor>
       </link>
 
       <link name="imu_link">
@@ -408,6 +491,15 @@
       <joint name='caster_back_joint' type='ball'>
         <parent>base_link</parent>
         <child>caster_back_link</child>
+      </joint>
+
+      <joint name="lidar_joint" type="fixed">
+        <parent>base_link</parent>
+        <child>base_scan</child>
+        <pose>-0.032 0 0.150 0 0 0</pose>
+        <axis>
+          <xyz>0 0 1</xyz>
+        </axis>
       </joint>
 
       <joint name="imu_joint" type="fixed">

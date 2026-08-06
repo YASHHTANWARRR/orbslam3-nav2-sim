@@ -112,7 +112,24 @@ def generate_launch_description():
     )
 
     # No robot_state_publisher: it requires URDF and this robot is described in
-    # SDF. odom -> base_footprint TF comes from the DiffDrive plugin via the
-    # bridge. RViz RobotModel in Phase 6 will need a separate URDF if wanted.
+    # SDF. odom -> base_footprint comes from the DiffDrive plugin via the
+    # bridge, but the links below it do not exist in TF at all, and Nav2 needs
+    # them to place the laser. These mirror the joint poses in
+    # gz_slim_tb3.sdf.xacro and must be kept in sync with it.
+    def static_tf(name, xyz, parent, child):
+        return Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name=name,
+            arguments=[*xyz, '0', '0', '0', parent, child],
+            parameters=[{'use_sim_time': use_sim_time}],
+        )
 
-    return LaunchDescription(args + resources + [gazebo, gazebo_headless, spawn, bridge])
+    frames = [
+        static_tf('tf_base_link', ['0', '0', '0.010'], 'base_footprint', 'base_link'),
+        static_tf('tf_base_scan', ['-0.032', '0', '0.150'], 'base_link', 'base_scan'),
+        static_tf('tf_camera_link', ['0.032', '0', '0.115'], 'base_link', 'camera_link'),
+    ]
+
+    return LaunchDescription(
+        args + resources + [gazebo, gazebo_headless, spawn, bridge] + frames)

@@ -22,6 +22,12 @@
   gz_type_name: "gz.msgs.CameraInfo"
   direction: GZ_TO_ROS
 
+# LDS lidar - Nav2 costmap obstacle source
+- topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
 # ground truth for scale calibration and for comparing against the SLAM path
 - topic_name: "/odom"
   ros_type_name: "nav_msgs/msg/Odometry"

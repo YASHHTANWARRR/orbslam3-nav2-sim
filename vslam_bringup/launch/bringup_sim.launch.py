@@ -13,8 +13,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -43,6 +43,9 @@ def generate_launch_description():
                               description="ORB-SLAM3's own Pangolin window"),
         DeclareLaunchArgument('pose_scale', default_value='3.2068',
                               description='Monocular scale; see calibrate_scale.py'),
+        DeclareLaunchArgument('nav', default_value='false',
+                              description='Start Nav2. Needs SLAM tracking first, '
+                                          'since map->odom comes from it.'),
     ]
 
     simulation = IncludeLaunchDescription(
@@ -61,24 +64,17 @@ def generate_launch_description():
         condition=IfCondition(slam),
     )
 
-    # VISUALISATION PLACEHOLDER, not a localisation estimate.
-    #
-    # The TF tree is two disconnected branches:
-    #     odom -> base_footprint   (DiffDrive, via the bridge)
-    #     map  -> orbslam3_camera  (our SLAM node)
-    # RViz needs one connected tree to show both under a single fixed frame, so
-    # this pins map to odom with identity. It is only approximately true - it
-    # holds because ORB-SLAM3's map origin is wherever it initialised, which is
-    # near the spawn pose.
-    #
-    # Nav2 will need this replaced by a real map -> odom correction published by
-    # the SLAM node. Delete this static publisher at that point.
+    # Fallback only. With SLAM running, the SLAM node publishes the real
+    # map -> odom correction and this must NOT run, or base_footprint would
+    # effectively have two conflicting parents. Active only when slam:=false,
+    # so the sim still has a connected TF tree for RViz.
     map_to_odom = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_odom_placeholder',
         arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
         parameters=[{'use_sim_time': True}],
+        condition=UnlessCondition(slam),
     )
 
     rviz_node = Node(
@@ -91,4 +87,19 @@ def generate_launch_description():
         condition=IfCondition(rviz),
     )
 
-    return LaunchDescription(args + [simulation, slam_stack, map_to_odom, rviz_node])
+    # Delayed: Nav2's costmaps need map -> odom to exist, which only happens
+    # once ORB-SLAM3 has initialised its map. Drive the robot forward after
+    # startup to bootstrap tracking.
+    navigation = TimerAction(
+        period=12.0,
+        actions=[IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('vslam_navigation'),
+                    'launch', 'navigation.launch.py')),
+        )],
+        condition=IfCondition(LaunchConfiguration('nav')),
+    )
+
+    return LaunchDescription(
+        args + [simulation, slam_stack, map_to_odom, navigation, rviz_node])

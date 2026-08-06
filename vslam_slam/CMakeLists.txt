@@ -11,6 +11,7 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV 4.6 REQUIRED)
 find_package(Eigen3 3.3.0 REQUIRED)
@@ -47,7 +48,7 @@ target_include_directories(mono_slam_node PRIVATE
 )
 
 ament_target_dependencies(mono_slam_node
-  rclcpp sensor_msgs nav_msgs geometry_msgs tf2 tf2_ros cv_bridge
+  rclcpp sensor_msgs nav_msgs geometry_msgs tf2 tf2_ros tf2_eigen cv_bridge
 )
 
 target_link_libraries(mono_slam_node

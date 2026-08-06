@@ -1,20 +1,22 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>vslam_bringup</name>
+  <name>vslam_navigation</name>
   <version>0.1.0</version>
-  <description>Top-level bringup for the monocular ORB-SLAM3 TurtleBot3 simulation.</description>
+  <description>Nav2 configuration for the slim TurtleBot3, localised by ORB-SLAM3.</description>
   <maintainer email="yashtanwar11092005@gmail.com">hornet</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>vslam_simulator</exec_depend>
-  <exec_depend>vslam_slam</exec_depend>
-  <exec_depend>vslam_navigation</exec_depend>
-  <exec_depend>vslam_description</exec_depend>
-  <exec_depend>rviz2</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_velocity_smoother</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>dwb_core</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
