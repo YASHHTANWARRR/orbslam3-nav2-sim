@@ -32,9 +32,11 @@ def generate_launch_description():
         DeclareLaunchArgument('image_topic', default_value='/camera/image'),
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(
-            'pose_scale', default_value='1.0',
-            description='Monocular scale factor. Calibrate against /odom: '
-                        'scale = odom_distance / slam_distance'),
+            'pose_scale', default_value='3.2068',
+            description='Monocular scale factor, measured in textured_tb3_world '
+                        'with calibrate_scale.py. Only valid for the map it was '
+                        'measured on - any tracking loss re-initialises with a '
+                        'different arbitrary scale, so re-measure.'),
         DeclareLaunchArgument('map_frame', default_value='map'),
         DeclareLaunchArgument('camera_frame', default_value='orbslam3_camera'),
         DeclareLaunchArgument('publish_tf', default_value='true'),

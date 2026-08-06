@@ -60,6 +60,13 @@ target_link_libraries(mono_slam_node
 
 install(TARGETS mono_slam_node DESTINATION lib/${PROJECT_NAME})
 
+# chmod +x in the source tree matters: --symlink-install only symlinks, so a
+# non-executable source gives "executable not found on the libexec directory"
+install(PROGRAMS
+  scripts/calibrate_scale.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(
   DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
