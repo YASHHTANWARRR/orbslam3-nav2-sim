@@ -1,0 +1,70 @@
+%YAML:1.0
+
+# ORB-SLAM3 monocular settings for the simulated TurtleBot3 camera.
+#
+# Schema copied from ros2_orb_slam3/orb_slam3/config/Monocular/EuRoC.yaml -
+# note the Camera1.* prefix, which is ORB-SLAM3 v1.0 format. Most tutorials
+# online show the ORB-SLAM2 form (Camera.fx) and will silently not apply.
+#
+# Intrinsics are MEASURED from Gazebo's /camera/camera_info, not computed from
+# the FOV formula (which gives 415.69, off by 0.1). Re-measure with:
+#   gz topic -e -t /camera/camera_info -n 1
+# If the camera in gz_slim_tb3.sdf.xacro changes, these must change with it.
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+Camera1.fx: 415.787
+Camera1.fy: 415.787
+Camera1.cx: 240.0
+Camera1.cy: 240.0
+
+# ideal simulated camera - no lens distortion to model
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera.width: 480
+Camera.height: 480
+
+Camera.newWidth: 480
+Camera.newHeight: 480
+
+Camera.fps: 30
+
+# bridged images are rgb8 (SDF format R8G8B8), so 1 is correct here.
+# Setting 0 would swap the R and B weights in the greyscale conversion.
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# The textured world measures ~1682 detectable features per frame, so 1000
+# is comfortably supported.
+ORBextractor.nFeatures: 1000
+
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
