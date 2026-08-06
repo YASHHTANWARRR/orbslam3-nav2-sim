@@ -11,6 +11,7 @@ ROS 2 Jazzy · Gazebo Harmonic (gz-sim 8) · Ubuntu 24.04
 | `vslam_description` | Robot xacro, cut Burger mesh, RViz config |
 | `vslam_simulator` | Textured world, Gazebo launch, `ros_gz_bridge` config |
 | `vslam_slam` | ORB-SLAM3 node, camera settings, scale calibration |
+| `vslam_navigation` | Nav2 params and launch |
 | `vslam_bringup` | Top-level launch composing everything |
 
 ## Quick start
@@ -115,9 +116,47 @@ Pillars in the world are each textured differently on purpose. Nine identical
 pillars cause perceptual aliasing, where place recognition matches the wrong one
 and corrupts the map.
 
-`map -> odom` is currently a **static identity placeholder** so RViz has one
-connected TF tree. It is not a localisation estimate, and Nav2 would need it
-replaced by a real correction from the SLAM node.
+## Nav2
 
-Nav2 is not integrated. The robot has no lidar and no depth camera, so nothing
-can populate an obstacle costmap.
+```bash
+ros2 launch vslam_bringup bringup_sim.launch.py nav:=true
+```
+
+**Drive forward first.** Nav2's costmaps need `map -> odom`, which only exists
+once ORB-SLAM3 has initialised its map:
+
+```bash
+ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.06}}'
+```
+
+Then send goals from RViz's "2D Goal Pose", or:
+
+```bash
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {stamp: {sec: 0, nanosec: 0}, frame_id: map}, pose: {position: {x: 0.8, y: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+The **zero stamp matters**. A stamped goal pins the planner to one instant, and
+once the TF buffer moves past it every lookup fails with "extrapolation into the
+past" and the goal aborts. Zero means "latest".
+
+Two deliberate differences from a stock TurtleBot3 Nav2 config:
+
+- **No AMCL, no map_server.** ORB-SLAM3 publishes `map -> odom`, so visual SLAM
+  replaces particle-filter-on-a-prebuilt-map. That is the point of the project.
+- **No static layer.** There is no prebuilt occupancy grid, so both costmaps are
+  rolling windows populated purely by the lidar.
+
+Verified: two `NavigateToPose` goals SUCCEEDED, reaching within 0.13 m and
+0.23 m of target.
+
+## Known limits
+
+Monocular tracking is the weak link. It drops on fast rotation, on featureless
+views, and near walls, and every recovery re-initialises the map with a new
+arbitrary scale. Drive gently. Feeding the robot's IMU into `IMU_MONOCULAR`
+would make the output metric and remove the scale problem entirely — the IMU is
+already simulated and bridged, just unused.
+
+`map -> odom` falls back to a **static identity placeholder** when `slam:=false`,
+purely so RViz has a connected TF tree. It is not a localisation estimate.

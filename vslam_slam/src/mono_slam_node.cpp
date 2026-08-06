@@ -51,6 +51,7 @@ public:
     odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
     base_frame_ = declare_parameter<std::string>("base_frame", "base_footprint");
     camera_link_frame_ = declare_parameter<std::string>("camera_link_frame", "camera_link");
+    transform_tolerance_ = declare_parameter<double>("transform_tolerance", 0.1);
 
     if (voc_file_.empty() || settings_file_.empty()) {
       RCLCPP_FATAL(get_logger(), "voc_file and settings_file are required");
@@ -77,6 +78,12 @@ public:
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       image_topic_, rclcpp::SensorDataQoS(),
       std::bind(&MonoSlamNode::onImage, this, std::placeholders::_1));
+
+    if (publish_map_odom_) {
+      map_odom_timer_ = create_wall_timer(
+        std::chrono::milliseconds(33),
+        std::bind(&MonoSlamNode::broadcastMapToOdom, this));
+    }
 
     RCLCPP_INFO(get_logger(), "tracking images from %s", image_topic_.c_str());
   }
@@ -175,7 +182,7 @@ private:
       Eigen::Isometry3d T_map_cam = Eigen::Isometry3d::Identity();
       T_map_cam.translate(Eigen::Vector3d(t.x(), t.y(), t.z()));
       T_map_cam.rotate(Eigen::Quaterniond(q.w(), q.x(), q.y(), q.z()));
-      publishMapToOdom(T_map_cam, stamp);
+      updateMapToOdom(T_map_cam);
     }
   }
 
@@ -188,8 +195,10 @@ private:
   //
   // base->camera and odom->base both come from TF, so the mounting offsets
   // stay in one place (the static publishers in sim.launch.py).
-  void publishMapToOdom(
-    const Eigen::Isometry3d & T_map_cam, const builtin_interfaces::msg::Time & stamp)
+  //
+  // This only recomputes the correction. Broadcasting happens on a timer - see
+  // broadcastMapToOdom().
+  void updateMapToOdom(const Eigen::Isometry3d & T_map_cam)
   {
     geometry_msgs::msg::TransformStamped base_cam_msg;
     geometry_msgs::msg::TransformStamped odom_base_msg;
@@ -207,11 +216,25 @@ private:
 
     const Eigen::Isometry3d T_base_cam = tf2::transformToEigen(base_cam_msg);
     const Eigen::Isometry3d T_odom_base = tf2::transformToEigen(odom_base_msg);
-    const Eigen::Isometry3d T_map_odom =
-      T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
 
-    geometry_msgs::msg::TransformStamped out = tf2::eigenToTransform(T_map_odom);
-    out.header.stamp = stamp;
+    T_map_odom_ = T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
+    have_map_odom_ = true;
+  }
+
+  // Broadcast the correction continuously and post-dated, the way AMCL does.
+  //
+  // Publishing only on tracked frames leaves gaps in the TF buffer, and Nav2
+  // then fails with "Lookup would require extrapolation into the past". A
+  // steady stream stamped slightly in the future keeps lookups inside the
+  // buffer. Holding the last correction while tracking is briefly lost is also
+  // what AMCL does - odom carries the robot until vision recovers.
+  void broadcastMapToOdom()
+  {
+    if (!have_map_odom_) {
+      return;
+    }
+    geometry_msgs::msg::TransformStamped out = tf2::eigenToTransform(T_map_odom_);
+    out.header.stamp = now() + rclcpp::Duration::from_seconds(transform_tolerance_);
     out.header.frame_id = map_frame_;
     out.child_frame_id = odom_frame_;
     tf_broadcaster_->sendTransform(out);
@@ -224,6 +247,10 @@ private:
   bool publish_map_odom_{true};
   bool show_viewer_{true};
   bool was_tracking_{false};
+  double transform_tolerance_{0.1};
+  Eigen::Isometry3d T_map_odom_{Eigen::Isometry3d::Identity()};
+  bool have_map_odom_{false};
+  rclcpp::TimerBase::SharedPtr map_odom_timer_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 

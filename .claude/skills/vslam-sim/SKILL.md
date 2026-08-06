@@ -276,6 +276,31 @@ so a non-executable source gives
 will handshake with a newly started `mono_node_cpp` and make an unrelated run
 look like it configured itself.
 
+## Nav2
+
+`vslam_navigation` runs Nav2 with **no AMCL, no map_server, and no static layer**.
+ORB-SLAM3 publishes `map -> odom`; both costmaps are rolling windows fed by the
+lidar. Footprint is `robot_radius: 0.11` — the body is 0.138 wide but the wheels
+reach `y = ±0.089`.
+
+Three things that cost real debugging:
+
+- **Broadcast `map -> odom` continuously and post-dated**, on a timer, the way
+  AMCL does. Publishing it only on tracked camera frames leaves gaps and Nav2
+  fails with `Lookup would require extrapolation into the past`. Hold the last
+  correction while tracking is briefly lost.
+- **Send goals with `stamp: {sec: 0, nanosec: 0}`.** A real stamp pins the
+  planner to one instant; once the TF buffer moves past it, every lookup fails
+  and the goal ABORTS.
+- **`base_footprint -> base_link -> base_scan` do not exist** without
+  `robot_state_publisher` (which needs URDF). `sim.launch.py` publishes them as
+  static transforms that must be kept in sync with the xacro joint poses.
+
+The lidar sits at `z=0.150` on a post so it clears the camera bracket
+(top at `z=0.119`); mounted lower, the bracket blinds it forward.
+
+Verified: two `NavigateToPose` goals SUCCEEDED, within 0.13 m and 0.23 m.
+
 ## Verification discipline
 
 Gate each layer before moving to the next. Never debug two layers at once.
