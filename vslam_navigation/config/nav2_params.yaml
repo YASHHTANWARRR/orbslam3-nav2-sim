@@ -120,10 +120,14 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 3.0
           obstacle_min_range: 0.0
+      # Pillars are 0.30 m across on a 1.1 m grid, so free gaps are 0.80 m.
+      # An 0.35 m inflation from both sides leaves almost no low-cost corridor
+      # and the planner refuses to thread the grid. 0.18 keeps real clearance
+      # (robot radius 0.11) while leaving the gaps usable.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        cost_scaling_factor: 4.0
+        inflation_radius: 0.18
       always_send_full_costmap: True
 
 global_costmap:
@@ -156,10 +160,14 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 3.0
           obstacle_min_range: 0.0
+      # Pillars are 0.30 m across on a 1.1 m grid, so free gaps are 0.80 m.
+      # An 0.35 m inflation from both sides leaves almost no low-cost corridor
+      # and the planner refuses to thread the grid. 0.18 keeps real clearance
+      # (robot radius 0.11) while leaving the gaps usable.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        cost_scaling_factor: 4.0
+        inflation_radius: 0.18
       always_send_full_costmap: True
 
 planner_server:
