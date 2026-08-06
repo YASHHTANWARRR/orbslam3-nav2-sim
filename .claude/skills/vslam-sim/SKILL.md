@@ -79,10 +79,25 @@ handshake completes, and it fails silently if you skip it.
 
 Required order:
 
-1. Publish the settings name repeatedly on `experiment_settings` until `"ACK"`
-   arrives on `exp_settings_ack`, then stop publishing it.
+1. Publish the settings name **exactly once** on `experiment_settings`, then
+   wait for `"ACK"` on `exp_settings_ack`.
 2. Only then, per frame: **`Float64` timestep first, `Image` second.** That order
-   is what the C++ side expects.
+   is what the C++ side expects — `mono_node_cpp` stores the timestep in a member
+   from one callback and consumes it in the other.
+
+**Publish the config exactly once — never in a loop.**
+`experimentSetting_callback` has *no re-entry guard*: it calls `initializeVSLAM`
+on every message, and `initializeVSLAM` does
+`settingsFilePath.append(configString).append(".yaml")` on a **member**. A second
+config message therefore builds `tb3.yamltb3.yaml`, fails to open it, and
+**segfaults (exit -11)**. Upstream's driver publishes in a loop and survives only
+by luck. `gz_camera_driver.py` instead waits for `get_subscription_count() > 0`
+before publishing once, which removes any reason to retry.
+
+**Both `voc_file_arg` and `settings_file_path_arg` must be set, or neither.**
+`common.cpp` falls back to its hardcoded paths when *either* is left at its
+default, so setting only the settings path is silently ignored.
+`settings_file_path_arg` needs a **trailing slash**.
 
 The settings name resolves to
 `~/ros2_ws/src/ros2_orb_slam3/orb_slam3/config/Monocular/<name>.yaml`.
@@ -227,6 +242,20 @@ Two things that bite:
 
 The launch file sets `GZ_SIM_RESOURCE_PATH` itself, so no manual export is
 needed when launching this way.
+
+`vslam_slam/launch/slam.launch.py` runs `mono_node_cpp` + the driver. It appends
+`~/.local/lib` to `LD_LIBRARY_PATH` itself, because a non-interactive shell never
+sources `~/.bashrc` and the node otherwise dies with **exit 127**
+(`libpango_display.so.0` not found).
+
+Python nodes installed with `install(PROGRAMS ...)` must be **`chmod +x` in the
+source tree**. With `--symlink-install` the install dir only symlinks the source,
+so a non-executable source gives
+`executable 'x.py' not found on the libexec directory`.
+
+**Kill stray `gz_camera_driver` processes between test runs.** A leftover driver
+will handshake with a newly started `mono_node_cpp` and make an unrelated run
+look like it configured itself.
 
 ## Verification discipline
 
