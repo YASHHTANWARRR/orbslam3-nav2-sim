@@ -12,10 +12,14 @@
 // REP-103 wants X forward, Y left, Z up. See publishPose().
 
 #include <memory>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -30,6 +34,7 @@
 #include <Eigen/Dense>
 
 #include "System.h"
+#include "ImuTypes.h"
 
 class MonoSlamNode : public rclcpp::Node
 {
@@ -45,6 +50,11 @@ public:
     camera_frame_ = declare_parameter<std::string>("camera_frame", "orbslam3_camera");
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     show_viewer_ = declare_parameter<bool>("show_viewer", true);
+
+    // Visual-inertial mode. Output becomes metrically scaled, so pose_scale
+    // is ignored. Requires the IMU block in the settings file (tb3_imu.yaml).
+    use_imu_ = declare_parameter<bool>("use_imu", false);
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
 
     // Nav2 needs map -> odom, not map -> camera. See publishMapToOdom().
     publish_map_odom_ = declare_parameter<bool>("publish_map_odom", true);
@@ -63,8 +73,11 @@ public:
     RCLCPP_INFO(get_logger(), "pose_scale: %.4f", pose_scale_);
 
     // Loading the vocabulary takes a few seconds.
+    const auto sensor = use_imu_ ? ORB_SLAM3::System::IMU_MONOCULAR
+                                 : ORB_SLAM3::System::MONOCULAR;
+    RCLCPP_INFO(get_logger(), "mode: %s", use_imu_ ? "IMU_MONOCULAR" : "MONOCULAR");
     slam_ = std::make_unique<ORB_SLAM3::System>(
-      voc_file_, settings_file_, ORB_SLAM3::System::MONOCULAR, show_viewer_);
+      voc_file_, settings_file_, sensor, show_viewer_);
 
     pose_pub_ = create_publisher<nav_msgs::msg::Odometry>("/orbslam3/pose", 10);
     path_pub_ = create_publisher<nav_msgs::msg::Path>("/orbslam3/path", 10);
@@ -78,6 +91,18 @@ public:
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       image_topic_, rclcpp::SensorDataQoS(),
       std::bind(&MonoSlamNode::onImage, this, std::placeholders::_1));
+
+    if (use_imu_) {
+      // 200 Hz: fast enough to keep up with the 30 Hz camera without adding
+      // latency. Single-threaded executor serialises this against tracking.
+      sync_timer_ = create_wall_timer(
+        std::chrono::milliseconds(5),
+        std::bind(&MonoSlamNode::processBuffered, this));
+      imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+        imu_topic_, rclcpp::SensorDataQoS(),
+        std::bind(&MonoSlamNode::onImu, this, std::placeholders::_1));
+      RCLCPP_INFO(get_logger(), "fusing IMU from %s", imu_topic_.c_str());
+    }
 
     if (publish_map_odom_) {
       map_odom_timer_ = create_wall_timer(
@@ -96,6 +121,34 @@ public:
   }
 
 private:
+  void onImu(const sensor_msgs::msg::Imu::SharedPtr msg)
+  {
+    std::lock_guard<std::mutex> lock(imu_mutex_);
+    imu_buffer_.push_back(*msg);
+  }
+
+  // Everything buffered up to this frame's timestamp. ORB-SLAM3 integrates
+  // these between the previous image and this one, so they must be handed over
+  // in order and then dropped.
+  std::vector<ORB_SLAM3::IMU::Point> drainImu(double image_time)
+  {
+    std::vector<ORB_SLAM3::IMU::Point> pts;
+    std::lock_guard<std::mutex> lock(imu_mutex_);
+    auto it = imu_buffer_.begin();
+    while (it != imu_buffer_.end()) {
+      const double t = rclcpp::Time(it->header.stamp).seconds();
+      if (t > image_time) {
+        break;
+      }
+      pts.emplace_back(
+        it->linear_acceleration.x, it->linear_acceleration.y, it->linear_acceleration.z,
+        it->angular_velocity.x, it->angular_velocity.y, it->angular_velocity.z, t);
+      ++it;
+    }
+    imu_buffer_.erase(imu_buffer_.begin(), it);
+    return pts;
+  }
+
   void onImage(const sensor_msgs::msg::Image::SharedPtr msg)
   {
     cv_bridge::CvImageConstPtr cv_ptr;
@@ -106,8 +159,68 @@ private:
       return;
     }
 
-    const double stamp = rclcpp::Time(msg->header.stamp).seconds();
-    const Sophus::SE3f Tcw = slam_->TrackMonocular(cv_ptr->image, stamp);
+    // In visual-inertial mode a frame cannot be tracked until the IMU stream
+    // has caught up past its timestamp. Callbacks arrive out of order, so
+    // tracking here directly yields "Empty IMU measurements vector!!!" and the
+    // local mapper eventually sets the bad-IMU flag and resets the map.
+    // Buffer instead; processBuffered() drains once the IMU covers the frame.
+    if (use_imu_) {
+      std::lock_guard<std::mutex> lock(image_mutex_);
+      image_buffer_.push_back({cv_ptr, msg->header});
+      if (image_buffer_.size() > 60) {
+        image_buffer_.pop_front();   // IMU stalled; do not grow without bound
+      }
+      return;
+    }
+
+    trackFrame(cv_ptr->image, msg->header, {});
+  }
+
+  // Pop frames whose timestamp the IMU stream has passed, newest-last.
+  void processBuffered()
+  {
+    while (true) {
+      cv_bridge::CvImageConstPtr img;
+      std_msgs::msg::Header hdr;
+      double t = 0.0;
+      {
+        std::lock_guard<std::mutex> ilock(image_mutex_);
+        if (image_buffer_.empty()) {
+          return;
+        }
+        t = rclcpp::Time(image_buffer_.front().second.stamp).seconds();
+        {
+          std::lock_guard<std::mutex> mlock(imu_mutex_);
+          // Wait until the IMU has a sample at or beyond this frame.
+          if (imu_buffer_.empty() ||
+            rclcpp::Time(imu_buffer_.back().header.stamp).seconds() < t)
+          {
+            return;
+          }
+        }
+        img = image_buffer_.front().first;
+        hdr = image_buffer_.front().second;
+        image_buffer_.pop_front();
+      }
+
+      const auto imu = drainImu(t);
+      if (imu.empty()) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000, "frame with no IMU samples, skipping");
+        continue;
+      }
+      trackFrame(img->image, hdr, imu);
+    }
+  }
+
+  void trackFrame(
+    const cv::Mat & image, const std_msgs::msg::Header & header,
+    const std::vector<ORB_SLAM3::IMU::Point> & imu)
+  {
+    const double stamp = rclcpp::Time(header.stamp).seconds();
+    const Sophus::SE3f Tcw = use_imu_
+      ? slam_->TrackMonocular(image, stamp, imu)
+      : slam_->TrackMonocular(image, stamp);
 
     // eTrackingState OK == 2. Publishing while LOST emits identity poses,
     // which look like the robot teleported back to the origin.
@@ -123,7 +236,7 @@ private:
       was_tracking_ = true;
     }
 
-    publishPose(Tcw, msg->header.stamp);
+    publishPose(Tcw, header.stamp);
   }
 
   // Order matters:
@@ -251,6 +364,14 @@ private:
   Eigen::Isometry3d T_map_odom_{Eigen::Isometry3d::Identity()};
   bool have_map_odom_{false};
   rclcpp::TimerBase::SharedPtr map_odom_timer_;
+  bool use_imu_{false};
+  std::string imu_topic_;
+  std::deque<sensor_msgs::msg::Imu> imu_buffer_;
+  std::mutex imu_mutex_;
+  std::deque<std::pair<cv_bridge::CvImageConstPtr, std_msgs::msg::Header>> image_buffer_;
+  std::mutex image_mutex_;
+  rclcpp::TimerBase::SharedPtr sync_timer_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 

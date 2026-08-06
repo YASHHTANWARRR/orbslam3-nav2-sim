@@ -51,16 +51,19 @@ controller_server:
       min_vel_y: 0.0
       max_vel_x: 0.22
       max_vel_y: 0.0
-      max_vel_theta: 2.0
+      # Capped hard: pure rotation gives monocular SLAM no parallax and is the
+      # single most reliable way to lose tracking. The DiffDrive plugin allows
+      # 2.84 rad/s; we deliberately use a fraction of it.
+      max_vel_theta: 0.6
       min_speed_xy: 0.0
       max_speed_xy: 0.22
       min_speed_theta: 0.0
       acc_lim_x: 2.5
       acc_lim_y: 0.0
-      acc_lim_theta: 3.2
+      acc_lim_theta: 1.2
       decel_lim_x: -2.5
       decel_lim_y: 0.0
-      decel_lim_theta: -3.2
+      decel_lim_theta: -1.2
       vx_samples: 20
       vy_samples: 5
       vtheta_samples: 20
@@ -75,14 +78,14 @@ controller_server:
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
                 "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.02
-      PathAlign.scale: 32.0
+      PathAlign.scale: 40.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.scale: 16.0
+      RotateToGoal.slowing_factor: 10.0
       RotateToGoal.lookahead_time: -1.0
 
 local_costmap:
@@ -186,18 +189,18 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.2
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 0.6
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 1.2
 
 velocity_smoother:
   ros__parameters:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.22, 0.0, 2.0]
-    min_velocity: [-0.22, 0.0, -2.0]
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
+    max_velocity: [0.22, 0.0, 0.6]
+    min_velocity: [-0.22, 0.0, -0.6]
+    max_accel: [2.5, 0.0, 1.2]
+    max_decel: [-2.5, 0.0, -1.2]
     odom_topic: "odom"
     odom_duration: 0.1

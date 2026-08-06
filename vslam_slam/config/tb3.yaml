@@ -45,15 +45,18 @@ Camera.RGB: 1
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
 
-# The textured world measures ~1682 detectable features per frame, so 1000
-# is comfortably supported.
-ORBextractor.nFeatures: 1000
+# Raised from 1000. More features survive sparse or floor-dominated views,
+# which is where tracking was dying. The textured world measures ~1682
+# detectable features per frame at default thresholds, more once lowered.
+ORBextractor.nFeatures: 1500
 
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 8
 
-ORBextractor.iniThFAST: 20
-ORBextractor.minThFAST: 7
+# Lowered from 20/7. FAST accepts weaker corners, so the extractor keeps
+# finding features in low-contrast views instead of giving up and losing track.
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 4
 
 #--------------------------------------------------------------------------------------------
 # Viewer Parameters

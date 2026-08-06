@@ -12,7 +12,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import AppendEnvironmentVariable, DeclareLaunchArgument, TimerAction
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
 
@@ -26,10 +26,19 @@ def generate_launch_description():
         os.path.expanduser('~'),
         'ros2_ws/src/ros2_orb_slam3/orb_slam3/Vocabulary/ORBvoc.txt.bin')
 
-    settings_file = os.path.join(slam_share, 'config', 'tb3.yaml')
+    # tb3_imu.yaml carries the IMU block; tb3.yaml is monocular-only.
+    settings_file = PythonExpression([
+        "'", os.path.join(slam_share, 'config', 'tb3_imu.yaml'), "'",
+        " if '", LaunchConfiguration('use_imu'), "' == 'true' else ",
+        "'", os.path.join(slam_share, 'config', 'tb3.yaml'), "'"])
 
     args = [
         DeclareLaunchArgument('image_topic', default_value='/camera/image'),
+        DeclareLaunchArgument(
+            'use_imu', default_value='false',
+            description='Visual-inertial mode (IMU_MONOCULAR). Metrically '
+                        'scaled, so pose_scale is ignored.'),
+        DeclareLaunchArgument('imu_topic', default_value='/imu'),
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument(
             'pose_scale', default_value='3.2068',
@@ -60,6 +69,8 @@ def generate_launch_description():
             'voc_file': voc_file,
             'settings_file': settings_file,
             'image_topic': LaunchConfiguration('image_topic'),
+            'use_imu': LaunchConfiguration('use_imu'),
+            'imu_topic': LaunchConfiguration('imu_topic'),
             'pose_scale': LaunchConfiguration('pose_scale'),
             'map_frame': LaunchConfiguration('map_frame'),
             'camera_frame': LaunchConfiguration('camera_frame'),

@@ -43,6 +43,8 @@ def generate_launch_description():
                               description="ORB-SLAM3's own Pangolin window"),
         DeclareLaunchArgument('pose_scale', default_value='3.2068',
                               description='Monocular scale; see calibrate_scale.py'),
+        DeclareLaunchArgument('use_imu', default_value='false',
+                              description='Visual-inertial ORB-SLAM3'),
         DeclareLaunchArgument('nav', default_value='false',
                               description='Start Nav2. Needs SLAM tracking first, '
                                           'since map->odom comes from it.'),
@@ -60,6 +62,7 @@ def generate_launch_description():
         launch_arguments={
             'pose_scale': pose_scale,
             'show_viewer': show_viewer,
+            'use_imu': LaunchConfiguration('use_imu'),
         }.items(),
         condition=IfCondition(slam),
     )

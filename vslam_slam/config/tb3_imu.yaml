@@ -1,0 +1,96 @@
+%YAML:1.0
+
+# ORB-SLAM3 VISUAL-INERTIAL settings (IMU_MONOCULAR).
+#
+# Same camera as tb3.yaml, plus the IMU block. Visual-inertial output is
+# metrically scaled, so pose_scale becomes irrelevant when this is used.
+#
+# Select with:  ros2 launch vslam_slam slam.launch.py use_imu:=true
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+Camera1.fx: 415.787
+Camera1.fy: 415.787
+Camera1.cx: 240.0
+Camera1.cy: 240.0
+
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera.width: 480
+Camera.height: 480
+Camera.newWidth: 480
+Camera.newHeight: 480
+
+Camera.fps: 30
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# IMU Parameters
+#--------------------------------------------------------------------------------------------
+
+# Transform from the camera OPTICAL frame to the IMU body frame.
+#
+# Derived from the joint poses in gz_slim_tb3.sdf.xacro:
+#   imu_link    at base_link + (-0.032, 0, 0.068)
+#   camera_link at base_link + ( 0.032, 0, 0.115)
+#   => camera origin in IMU frame = (0.064, 0, 0.047)
+#
+# The rotation maps optical axes (x right, y down, z forward) into body axes
+# (x forward, y left, z up):
+#   optical +z -> body +x     optical +y -> body -z     optical +x -> body -y
+#
+# If any mount pose in the xacro changes, recompute this.
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [ 0.0,  0.0,  1.0,  0.064,
+         -1.0,  0.0,  0.0,  0.000,
+          0.0, -1.0,  0.0,  0.047,
+          0.0,  0.0,  0.0,  1.0]
+
+# The simulated IMU (gz_slim_tb3.sdf.xacro) uses per-sample stddev
+# 2e-4 rad/s gyro and 1.7e-2 m/s^2 accel at 200 Hz, which is far cleaner than
+# real hardware. These values are deliberately LOOSER than the simulator's
+# truth: under-trusting the IMU is stable, over-trusting it makes the
+# optimiser brittle.
+IMU.NoiseGyro: 1.7e-4
+IMU.NoiseAcc: 2.0e-3
+IMU.GyroWalk: 1.9e-5
+IMU.AccWalk: 3.0e-3
+IMU.Frequency: 200.0
+
+# Insert keyframes even when tracking is weak - helps the IMU carry the pose
+# through visually degenerate motion, which is the whole point of using it.
+IMU.InsertKFsWhenLost: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1500
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 4
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
