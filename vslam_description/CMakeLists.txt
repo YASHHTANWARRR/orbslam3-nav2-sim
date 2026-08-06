@@ -7,7 +7,7 @@ find_package(ament_cmake REQUIRED)
 # package://vslam_description/meshes/burger_deck1.stl, and gz resolves that
 # against the install tree. Omitting it renders the robot body invisible.
 install(
-  DIRECTORY urdf meshes
+  DIRECTORY urdf meshes rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
