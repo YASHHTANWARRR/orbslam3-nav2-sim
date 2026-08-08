@@ -226,8 +226,9 @@ private:
     // which look like the robot teleported back to the origin.
     if (slam_->GetTrackingState() != 2) {
       if (was_tracking_) {
-        RCLCPP_WARN(get_logger(), "tracking lost");
+        RCLCPP_WARN(get_logger(), "tracking lost - holding last map->odom");
         was_tracking_ = false;
+        reanchor_pending_ = true;   // re-pin the next map onto this one
       }
       return;
     }
@@ -330,7 +331,28 @@ private:
     const Eigen::Isometry3d T_base_cam = tf2::transformToEigen(base_cam_msg);
     const Eigen::Isometry3d T_odom_base = tf2::transformToEigen(odom_base_msg);
 
-    T_map_odom_ = T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
+    const Eigen::Isometry3d raw = T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
+
+    // Re-anchor after a tracking loss.
+    //
+    // ORB-SLAM3 starts a brand new map when tracking dies, and its origin is
+    // wherever the camera happened to be. Published raw, the map frame teleports
+    // and every outstanding Nav2 goal - which is expressed in map - becomes
+    // meaningless. The planner then returns "0 poses" and aborts.
+    //
+    // Instead, pin the new map onto the old one so that map is CONTINUOUS at the
+    // instant tracking returns. Odometry carries the robot across the gap, which
+    // is what AMCL does when it loses confidence. Absolute accuracy drifts, but
+    // goals stay valid, which is what Nav2 needs.
+    if (reanchor_pending_) {
+      if (have_map_odom_) {
+        anchor_ = T_map_odom_ * raw.inverse();
+        RCLCPP_WARN(get_logger(), "map re-anchored after tracking loss (map #%d)", ++resets_);
+      }
+      reanchor_pending_ = false;
+    }
+
+    T_map_odom_ = anchor_ * raw;
     have_map_odom_ = true;
   }
 
@@ -362,6 +384,9 @@ private:
   bool was_tracking_{false};
   double transform_tolerance_{0.1};
   Eigen::Isometry3d T_map_odom_{Eigen::Isometry3d::Identity()};
+  Eigen::Isometry3d anchor_{Eigen::Isometry3d::Identity()};
+  bool reanchor_pending_{false};
+  int resets_{0};
   bool have_map_odom_{false};
   rclcpp::TimerBase::SharedPtr map_odom_timer_;
   bool use_imu_{false};

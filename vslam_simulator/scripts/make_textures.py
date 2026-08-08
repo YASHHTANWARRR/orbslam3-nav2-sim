@@ -100,8 +100,18 @@ def main(outdir):
         print(f'  {p}')
     Image.fromarray(grid_floor()).save(out / 'floor.png')
     print(f'  {out / "floor.png"}')
-    Image.fromarray(blocks(32, (170, 160, 145))).save(out / 'wall.png')
-    print(f'  {out / "wall.png"}')
+    # One texture per wall. Four identical walls in a square arena are a
+    # perceptual-aliasing trap in exactly the way identical pillars are.
+    walls = [
+        lambda: blocks(32, (170, 160, 145)),
+        lambda: checker(20, (70, 90, 120), (225, 230, 235)),
+        lambda: stripes_dots((190, 175, 150), (45, 40, 35)),
+        lambda: blocks(40, (120, 140, 120)),
+    ]
+    for i, fn in enumerate(walls, 1):
+        Image.fromarray(fn()).save(out / f'wall_{i}.png')
+        print(f'  {out / f"wall_{i}.png"}')
+    Image.fromarray(walls[0]()).save(out / 'wall.png')
 
 
 def demo():

@@ -116,19 +116,25 @@ def generate_launch_description():
     # bridge, but the links below it do not exist in TF at all, and Nav2 needs
     # them to place the laser. These mirror the joint poses in
     # gz_slim_tb3.sdf.xacro and must be kept in sync with it.
-    def static_tf(name, xyz, parent, child):
+    # args are: x y z yaw pitch roll parent child
+    def static_tf(name, xyz, rpy, parent, child):
         return Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name=name,
-            arguments=[*xyz, '0', '0', '0', parent, child],
+            arguments=[*xyz, *rpy, parent, child],
             parameters=[{'use_sim_time': use_sim_time}],
         )
 
     frames = [
-        static_tf('tf_base_link', ['0', '0', '0.010'], 'base_footprint', 'base_link'),
-        static_tf('tf_base_scan', ['-0.032', '0', '0.150'], 'base_link', 'base_scan'),
-        static_tf('tf_camera_link', ['0.032', '0', '0.115'], 'base_link', 'camera_link'),
+        static_tf('tf_base_link', ['0', '0', '0.010'], ['0', '0', '0'],
+                  'base_footprint', 'base_link'),
+        static_tf('tf_base_scan', ['-0.032', '0', '0.150'], ['0', '0', '0'],
+                  'base_link', 'base_scan'),
+        # pitch -0.0873 = 5 deg nose-up, matching cam_pitch in the xacro.
+        # If it disagrees with the xacro, map->odom inherits the error.
+        static_tf('tf_camera_link', ['0.032', '0', '0.250'], ['0', '-0.0873', '0'],
+                  'base_link', 'camera_link'),
     ]
 
     return LaunchDescription(

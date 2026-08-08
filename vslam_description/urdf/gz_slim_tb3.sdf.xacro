@@ -30,7 +30,16 @@
 
     <!-- deck1 mesh tops out at 60.5mm; the bracket stands directly on it -->
     <xacro:property name="deck_z" value="0.060"/>
-    <xacro:property name="cam_z" value="0.115"/>
+    <!-- Raised from 0.115. At that height the optical axis was horizontal and
+         the bottom half of every frame was floor from ~0.2 m out - close,
+         low-parallax, repetitively textured, and a poor diet for monocular
+         tracking. At 0.25 with a 5 deg upward tilt the floor starts ~0.7 m out
+         and pillars/walls dominate the frame.
+         The lidar scan plane is at 0.150; the bracket crossing it sits 0.061 m
+         from the lidar, inside range_min 0.12, so it is not seen. -->
+    <xacro:property name="cam_z" value="0.250"/>
+    <!-- negative pitch = nose up in SDF -->
+    <xacro:property name="cam_pitch" value="-0.0873"/>
     <xacro:property name="mast_x" value="0.010"/>
 
     <!-- colour scheme -->
@@ -106,7 +115,7 @@
           <pose>${mast_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.014 0.030 ${cam_z - deck_z}</size>
+              <size>0.016 0.030 ${cam_z - deck_z}</size>
             </box>
           </geometry>
           <material>
@@ -117,7 +126,7 @@
 
         <!-- bracket arm from mast to camera -->
         <visual name="mast_arm_visual">
-          <pose>${(mast_x + 0.032) / 2} 0 ${cam_z} 0 0 0</pose>
+          <pose>${(mast_x + 0.032) / 2} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
           <geometry>
             <box>
               <size>0.030 0.024 0.008</size>
@@ -409,7 +418,7 @@
            Measured intrinsics: fx = fy = 415.787, cx = cy = 240.
            These MUST stay in sync with vslam_slam/config/tb3.yaml. -->
       <link name="camera_link">
-        <pose>0.032 0 0.115 0 0 0</pose>
+        <pose>0.032 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <inertial>
           <pose>0 0 0 0 0 0</pose>
           <inertia>
@@ -511,7 +520,7 @@
       <joint name="camera_joint" type="fixed">
         <parent>base_link</parent>
         <child>camera_link</child>
-        <pose>0.032 0 0.115 0 0 0</pose>
+        <pose>0.032 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <axis>
           <xyz>0 0 1</xyz>
         </axis>
