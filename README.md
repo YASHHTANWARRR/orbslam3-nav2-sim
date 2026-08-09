@@ -770,7 +770,3 @@ vslam_navigation/
 vslam_bringup/
   launch/bringup_sim.launch.py   the only entry point
 ```
-
-## License
-
-Apache-2.0. TurtleBot3 meshes are Apache-2.0 from ROBOTIS.
