@@ -12,6 +12,7 @@ install(
 # non-executable source gives "executable not found on the libexec directory"
 install(PROGRAMS
   scripts/goal_relay.py
+  scripts/send_waypoints.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

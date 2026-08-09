@@ -437,6 +437,46 @@ means building a whole collection UI. **For a multi-stop demo, just send single
 goals back-to-back via "2D Goal Pose"** — each one already works reliably, and
 the visual result (robot drives to A, then B, then C) is identical.
 
+### Sending a tour of waypoints from code
+
+`send_waypoints.py` is that back-to-back pattern, scripted — no clicking:
+
+```bash
+ros2 run vslam_navigation send_waypoints.py
+ros2 run vslam_navigation send_waypoints.py --waypoints "0.9,0.4 0.2,-0.9 -0.9,-0.4"
+ros2 run vslam_navigation send_waypoints.py --loop
+```
+
+Each point is sent as its own `NavigateToPose` goal (zero-stamped, same as
+`goal_relay`) and the script blocks until it finishes before sending the next —
+so it's not a real `FollowWaypoints` action, just the reliable single-goal path
+called in sequence.
+
+Verified: sent, `SUCCEEDED`. Also observed a case where a leg stalled for
+minutes — a tracking-loss + re-anchor happened right as that goal was sent.
+That's the project's known monocular fragility (see "Tracking stability"
+above), not a bug in the script; it correctly kept waiting on the real result
+rather than reporting false success.
+
+**`--preset textures`** is a ready-made tour of every uniquely-textured
+surface in the world — all 9 pillars (each running a different pattern, see
+`make_textures.py`) plus all 4 differently-textured walls:
+
+```bash
+ros2 run vslam_navigation send_waypoints.py --preset textures
+```
+
+Every pillar stop is **computed**, not eyeballed: 0.6 m from the pillar centre
+along the line toward the arena's centre — clears the 0.18 m inflation layer
+plus the 0.11 m robot radius with margin, and close enough to frame the
+texture. The self-check (`send_waypoints.py demo`) verifies every stop clears
+*every* pillar, not just the one it targets, since some approach points sit
+close to a neighbour in the grid. Visit order is a serpentine sweep of the 3×3
+grid, then the 4 walls, to minimise backtracking.
+
+Verified live: first leg (pillar_1, the `(-1.1,-1.1)` corner) — `SUCCEEDED`
+in ~21s.
+
 ### Seeing the planning
 
 With `nav:=true`, RViz loads `nav.rviz` instead of `slam.rviz`, adding everything
