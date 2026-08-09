@@ -283,6 +283,12 @@ ORB-SLAM3 publishes `map -> odom`; both costmaps are rolling windows fed by the
 lidar. Footprint is `robot_radius: 0.11` — the body is 0.138 wide but the wheels
 reach `y = ±0.089`.
 
+`xy_goal_tolerance` is `0.12` (robot radius 0.11 + a hair), set **identically**
+in both `general_goal_checker` and `FollowPath`. It was `0.25` — loose enough
+that any goal clicked within 25cm of the robot's start reported "reached"
+almost instantly, having barely moved. If the two copies disagree, the
+controller and the goal checker argue about when the goal is actually done.
+
 Three things that cost real debugging:
 
 - **Broadcast `map -> odom` continuously and post-dated**, on a timer, the way
@@ -292,18 +298,58 @@ Three things that cost real debugging:
 - **Send goals with `stamp: {sec: 0, nanosec: 0}`.** A real stamp pins the
   planner to one instant; once the TF buffer moves past it, every lookup fails
   and the goal ABORTS.
+- **RViz's "Nav2 Goal" tool / Navigation 2 panel ALWAYS aborts here — use "2D
+  Goal Pose" instead.** Confirmed by reading `nav2_rviz_plugins/nav2_panel.hpp`:
+  it sends the action goal from its own internal `client_node_`, created
+  without `use_sim_time`, so it stamps with wall-clock time against a sim-time
+  TF tree. No parameter fixes that mismatch. `vslam_navigation/scripts/
+  goal_relay.py` subscribes the plain tool's `/goal_pose` topic (published by
+  RViz's *main* node, which correctly has `use_sim_time`) and drives the action
+  itself. Runs automatically with `nav:=true`.
+- **"Waypoint / Nav Through Poses Mode" in the same panel has the SAME bug —
+  don't use it.** `nav2_panel.hpp` shares one `client_node_` across
+  `NavigateToPose`, `FollowWaypoints`, and `NavigateThroughPoses` — confirmed
+  by reading the header, all three declared side by side. `GoalPoseUpdater`
+  (used to collect waypoint clicks) is a Qt signal of raw doubles, not a
+  stamped message, so there's no `/goal_pose`-style topic to relay from —
+  fixing this would mean building a whole collection UI. Not worth it: send
+  sequential single goals via "2D Goal Pose" instead, same visual result.
 - **`base_footprint -> base_link -> base_scan` do not exist** without
   `robot_state_publisher` (which needs URDF). `sim.launch.py` publishes them as
   static transforms that must be kept in sync with the xacro joint poses.
 
-Camera and lidar share **one post** at `sensor_post_x = -0.032` — camera on top
-(`z=0.250`, 5° up), lidar partway (`z=0.150`). Not just aesthetic: keep them
-separated in z, not x, or the camera housing will sit in the lidar's horizontal
-scan plane and blind it forward. If either mount pose changes in the xacro, the
-matching static TF in `sim.launch.py` (`tf_camera_link`) must change with it, or
+**Lidar and camera are on SEPARATE mounts — never stack them coaxially.**
+An earlier version put both on one post (camera above the lidar, same x,y):
+the post's z-span fully contained the lidar's z-span at the same x,y, meaning
+a solid rod ran straight through the lidar's body. Not buildable, and visibly
+wrong once actually inspected in Gazebo.
+
+Current layout: lidar flush on the deck (`x=-0.032, z=0.0875`, its own real
+hardware height, no elevation needed since nothing shares its mast anymore),
+camera on its own separate mast (`camera_post_x = -0.10, z=0.250`, 5° up),
+offset sideways from the lidar by enough to clear its 0.0508 m radius
+(separation 0.068 m vs 0.0608 m required — 7.2mm margin, verified by direct
+calculation, not eyeballed). The camera's mast does still cross the lidar's
+scan height, but only in a narrow arc directly behind the robot — an accepted,
+realistic mount blind spot, not an intersection.
+
+If either mount pose changes in the xacro, the matching static TF in
+`sim.launch.py` (`tf_base_scan` / `tf_camera_link`) must change with it, or
 `map -> odom` silently inherits the error.
 
 Verified: two `NavigateToPose` goals SUCCEEDED, within 0.13 m and 0.23 m.
+
+**Re-anchoring the TF alone was not enough — pose/path leaked the bug too.**
+The first version of re-anchoring corrected `map -> odom` only.
+`/orbslam3/pose`, `/orbslam3/path`, and the `orbslam3_camera` TF kept
+publishing raw coordinates from whichever ORB-SLAM3 map was currently active,
+so every tracking-loss reset still made the visualised path teleport to the
+new map's origin — visible in RViz as the SLAM trajectory shooting off at a
+random angle and zigzagging. `correctAndAnchor()` in `mono_slam_node.cpp` is
+now the one place all four (`pose`, `path`, camera TF, `map->odom`) get
+anchored from, so they can't disagree. If you ever touch pose publishing
+again: **anything derived from `Tcw` must go through the anchor before being
+published**, not just the TF.
 
 ## Bootstrapping without manual /cmd_vel
 

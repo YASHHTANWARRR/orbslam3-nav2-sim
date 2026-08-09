@@ -129,12 +129,13 @@ def generate_launch_description():
     frames = [
         static_tf('tf_base_link', ['0', '0', '0.010'], ['0', '0', '0'],
                   'base_footprint', 'base_link'),
-        static_tf('tf_base_scan', ['-0.032', '0', '0.150'], ['0', '0', '0'],
+        # Lidar flush on the deck; camera on its own mast offset behind it
+        # (camera_post_x=-0.10 in the xacro) - separate mounts, not stacked
+        # coaxially. If either pose disagrees with the xacro, map->odom
+        # inherits the error.
+        static_tf('tf_base_scan', ['-0.032', '0', '0.0875'], ['0', '0', '0'],
                   'base_link', 'base_scan'),
-        # pitch -0.0873 = 5 deg nose-up, x=-0.032 = shares the lidar's post
-        # (sensor_post_x), matching the xacro. If either disagrees with the
-        # xacro, map->odom inherits the error.
-        static_tf('tf_camera_link', ['-0.032', '0', '0.250'], ['0', '-0.0873', '0'],
+        static_tf('tf_camera_link', ['-0.10', '0', '0.250'], ['0', '-0.0873', '0'],
                   'base_link', 'camera_link'),
     ]
 

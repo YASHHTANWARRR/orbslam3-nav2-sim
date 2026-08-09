@@ -193,22 +193,26 @@ replaced rather than patched.
 
 ## The robot
 
-TurtleBot3 Burger with the upper two decks cut off, and the LDS lidar and a
-forward monocular camera sharing a single post — camera on top, tilted 5° up.
-Geometry follows the official ROBOTIS burger model rather than being re-derived.
+TurtleBot3 Burger with the upper two decks cut off, the LDS lidar mounted
+flush on the deck, and a forward monocular camera on its own mast offset
+behind it, tilted 5° up. Geometry follows the official ROBOTIS burger model
+rather than being re-derived.
+
+Lidar and camera are **separate mounts, not stacked on one post.** An earlier
+version ran a single rod through the lidar's own body to reach the camera
+above it — not something buildable in real hardware. The camera's mast is now
+offset sideways (`camera_post_x = -0.10` vs the lidar's `-0.032`) by enough to
+clear the lidar's 0.0508 m radius with 7 mm to spare.
 
 ```
-              camera        z = 0.250   x = -0.032, tilted 5° up
-              ▲
-              │
-        lidar (base_scan)  z = 0.150   x = -0.032   (same post)
-              ▲
-              │ shared post
-              │
-        ══════╧══════      deck top    z = 0.060
-        │  burger base │
-        └──○────────○──┘   wheels      z = 0.023   y = ±0.080
-              caster       x = -0.081
+   camera (own mast)                    lidar (flush on deck)
+       ▲                                     ▲
+       │  z = 0.250, tilted 5° up            │  z = 0.0875
+       │  x = -0.10                          │  x = -0.032
+       │                                ══════╧══════
+   ════╧════                            │  burger base │
+   deck z=0.060                         └──○────────○──┘   wheels
+                                              caster       x = -0.081
 ```
 
 | | Value | Notes |
@@ -217,8 +221,8 @@ Geometry follows the official ROBOTIS burger model rather than being re-derived.
 | Wheels | `y = ±0.080`, radius `0.033` | matches real Burger |
 | `wheel_separation` | `0.160` | **must** equal `2 × wheel_y` |
 | Max speed | `0.22 m/s`, `2.84 rad/s` | real Burger limits |
-| Camera | 480×480 @ 30 Hz, `hfov 1.047` | `x=-0.032, z=0.250`, 5° up |
-| Lidar | 360 samples, 0.12–3.5 m, 10 Hz | `x=-0.032, z=0.150`, same post as camera |
+| Camera | 480×480 @ 30 Hz, `hfov 1.047` | own mast, `x=-0.10, z=0.250`, 5° up |
+| Lidar | 360 samples, 0.12–3.5 m, 10 Hz | flush on deck, `x=-0.032, z=0.0875` |
 | Intrinsics | `fx = fy = 415.787`, `cx = cy = 240` | zero distortion |
 
 **Two constraints that cause silent failures:**
@@ -231,9 +235,10 @@ Intrinsics are **measured** from `/camera/camera_info`, not computed from the FO
 formula (which gives 415.69, off by 0.1). They live in two files and must stay in
 sync: `gz_slim_tb3.sdf.xacro` and `vslam_slam/config/tb3.yaml`.
 
-Camera and lidar share one post at `x=-0.032`, separated in height (`z=0.150`
-vs `z=0.250`) so neither occludes the other's field of view — the camera
-housing sits well clear of the lidar's horizontal scan plane.
+Lidar and camera are on separate mounts (see above) so neither's geometry
+overlaps the other's — the camera's mast does clip a narrow arc of the lidar's
+scan directly behind the robot, a small blind spot from the mount itself,
+same as real hardware.
 
 ---
 
@@ -362,7 +367,8 @@ is the real operational cost of monocular SLAM.
 ros2 launch vslam_bringup bringup_sim.launch.py nav:=true
 ```
 
-Drive forward to initialise SLAM, then send goals from RViz's **2D Goal Pose**, or:
+Drive forward to initialise SLAM, then send goals from RViz's **"2D Goal Pose"**
+toolbar tool, or:
 
 ```bash
 ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
@@ -388,6 +394,48 @@ flowchart LR
 The **zero stamp matters**. A stamped goal pins the planner to one instant; once
 the TF buffer moves past it, every lookup fails with *"extrapolation into the
 past"* and the goal ABORTS. Zero means "latest".
+
+### Use "2D Goal Pose", not "Nav2 Goal"
+
+RViz has **two different click-to-navigate tools** and only one of them works
+here. This cost real debugging time, so it's worth being explicit:
+
+| Tool | Result |
+|---|---|
+| **"2D Goal Pose"** (plain toolbar icon) | Works |
+| **"Nav2 Goal"** (toolbar icon, or the Navigation 2 panel) | **Always aborts** |
+
+The cause is a real bug, confirmed by reading the installed `nav2_rviz_plugins`
+headers: `nav2_panel.hpp` sends its action goal from its **own internal ROS
+node** (`client_node_`), created without `use_sim_time`. That node stamps every
+goal with **wall-clock time**, while the entire rest of the simulation — TF,
+costmaps, SLAM — runs on **sim time**. Every lookup for that goal therefore
+fails "extrapolation into the future", and the goal aborts immediately,
+regardless of where you clicked or what the map looks like. It is not a
+tuning problem; no parameter fixes a wall-time-vs-sim-time mismatch of that
+size.
+
+`goal_relay.py` works around it: the plain "2D Goal Pose" tool publishes to
+`/goal_pose` from RViz's *main* node — the one `use_sim_time: true` was
+actually set on — so its stamps are correct. The relay picks that topic up and
+drives the `NavigateToPose` action itself, zeroing the stamp for good measure.
+It runs automatically with `nav:=true`. Verified: a goal published to
+`/goal_pose` → **SUCCEEDED**.
+
+**"Waypoint / Nav Through Poses Mode" (in the same panel) has the identical
+bug — don't use it either.** Confirmed by reading `nav2_panel.hpp`: it declares
+a *single* `client_node_` shared by all three action clients — `NavigateToPose`,
+`FollowWaypoints`, and `NavigateThroughPoses`. Clicks are collected via
+`GoalPoseUpdater`, a Qt signal carrying raw `x, y, theta` doubles (not a
+stamped ROS message), and the panel stamps the final action goal itself using
+that same broken node. Same wall-clock-vs-sim-clock mismatch, same guaranteed
+abort — nothing route-specific to single goals about the fix.
+
+No `goal_relay`-style fix exists for this one: there's no plain-RViz tool that
+collects multiple waypoints the way "2D Goal Pose" collects one, so a fix here
+means building a whole collection UI. **For a multi-stop demo, just send single
+goals back-to-back via "2D Goal Pose"** — each one already works reliably, and
+the visual result (robot drives to A, then B, then C) is identical.
 
 ### Seeing the planning
 
@@ -539,6 +587,24 @@ which broke every outstanding Nav2 goal — the planner would return
 moment tracking returns, using odometry to bridge the gap — the same idea AMCL
 uses when it loses confidence. `map` stays continuous through a reset; only
 metric accuracy drifts, not goal validity.
+
+**A follow-on bug from that fix**, since caught: the re-anchor was applied to
+the `map -> odom` TF only. `/orbslam3/pose` and `/orbslam3/path` kept
+publishing raw coordinates from whichever map happened to be active — so every
+reset still made the visualised path (and the `orbslam3_camera` TF) teleport
+to the new map's own origin, even though `map -> odom` was already correct.
+In RViz this showed up as the SLAM trajectory shooting off in a random
+direction and zigzagging after every tracking loss.
+
+Fixed by computing the anchor once and applying it everywhere pose data is
+published — `correctAndAnchor()` is now the single place `/orbslam3/pose`,
+`/orbslam3/path`, the camera TF, and `map -> odom` all get corrected from, so
+they cannot disagree about which map they're anchored to.
+
+**Verified with 3 forced tracking losses** (aggressive rotation) — 3930 path
+points sampled, mean point-to-point distance 0.001 m, and the only jumps above
+0.15 m were the 3 reset events themselves, capped at 0.33 m (ordinary
+dead-reckoning drift during the blind window, not a teleport).
 
 Also fixed: the inflation radius (0.35 m) very nearly sealed the gaps between
 pillars (0.30 m diameter on a 1.1 m grid, leaving a 0.10 m corridor against a

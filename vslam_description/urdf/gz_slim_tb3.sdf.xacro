@@ -34,17 +34,22 @@
          the bottom half of every frame was floor from ~0.2 m out - close,
          low-parallax, repetitively textured, and a poor diet for monocular
          tracking. At 0.25 with a 5 deg upward tilt the floor starts ~0.7 m out
-         and pillars/walls dominate the frame.
-         The lidar scan plane is at 0.150; the bracket crossing it sits 0.061 m
-         from the lidar, inside range_min 0.12, so it is not seen. -->
+         and pillars/walls dominate the frame. -->
     <xacro:property name="cam_z" value="0.250"/>
     <!-- negative pitch = nose up in SDF -->
     <xacro:property name="cam_pitch" value="-0.0873"/>
-    <!-- Camera shares the lidar's post (x=-0.032) instead of sitting on its
-         own forward bracket - mounted directly above/behind the lidar on the
-         same mast. Both are well clear of each other in z (0.150 vs 0.250),
-         so the camera housing does not occlude the lidar's scan plane. -->
-    <xacro:property name="sensor_post_x" value="-0.032"/>
+    <!-- Lidar and camera are on SEPARATE masts, not stacked coaxially. A
+         stacked design (one post through the lidar's z-extent, or two
+         segments dodging around it) always leaves a single rod running
+         through the same x,y point as the lidar body - not something you can
+         actually build. Real mounts sit side by side instead.
+         Lidar mounts flush on the deck (x=-0.032, matches its own link pose)
+         at real hardware height; camera_post_x is offset far enough behind it
+         (more negative x) to clear the lidar's 0.0508 m radius with margin:
+         separation 0.068 m > (0.0508 lidar + 0.010 post) = 0.0608 m
+         required, i.e. 7.2mm clearance. Verified no lateral overlap at any
+         height. -->
+    <xacro:property name="camera_post_x" value="-0.10"/>
 
     <!-- colour scheme -->
     <xacro:property name="c_body" value="0.10 0.28 0.32"/>
@@ -99,10 +104,11 @@
           </material>
         </visual>
 
-        <!-- Single post carrying both the lidar (partway up) and the camera
-             (on top, directly behind/above the lidar) - see sensor_post_x. -->
-        <visual name="sensor_post_visual">
-          <pose>${sensor_post_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
+        <!-- Camera's own mast, a single straight post from the deck up to the
+             camera. Offset in x from the lidar (camera_post_x, see above) so
+             it never crosses the lidar's body, at any height. -->
+        <visual name="camera_post_visual">
+          <pose>${camera_post_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
           <geometry>
             <cylinder>
               <radius>0.010</radius>
@@ -117,7 +123,7 @@
 
         <!-- small mounting cap connecting the post top to the camera housing -->
         <visual name="camera_mount_visual">
-          <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
+          <pose>${camera_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
           <geometry>
             <box>
               <size>0.024 0.024 0.008</size>
@@ -130,11 +136,15 @@
         </visual>
       </link>
 
-      <!-- LDS lidar for Nav2 costmaps. Mounted at z=0.150 on a post so it
-           clears the camera bracket (top at z=0.119) - a lower mount would
-           put the bracket in the scan and blind the robot forward. -->
+      <!-- LDS lidar, mounted flush on the deck like the real hardware - no
+           elevation needed once it is not sharing a mast with the camera.
+           Height is deck_z + half the lidar body (0.0275), sitting the lidar
+           body directly on the deck surface with no gap.
+           The camera's mast (at camera_post_x, offset sideways) does cross
+           the lidar's scan height, but only in a narrow arc directly behind
+           it - a small blind spot from the mount, same as real hardware. -->
       <link name="base_scan">
-        <pose>-0.032 0 0.150 0 0 0</pose>
+        <pose>-0.032 0 0.0875 0 0 0</pose>
         <inertial>
           <inertia>
             <ixx>0.001</ixx>
@@ -409,7 +419,7 @@
            Measured intrinsics: fx = fy = 415.787, cx = cy = 240.
            These MUST stay in sync with vslam_slam/config/tb3.yaml. -->
       <link name="camera_link">
-        <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
+        <pose>${camera_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <inertial>
           <pose>0 0 0 0 0 0</pose>
           <inertia>
@@ -496,7 +506,7 @@
       <joint name="lidar_joint" type="fixed">
         <parent>base_link</parent>
         <child>base_scan</child>
-        <pose>-0.032 0 0.150 0 0 0</pose>
+        <pose>-0.032 0 0.0875 0 0 0</pose>
         <axis>
           <xyz>0 0 1</xyz>
         </axis>
@@ -511,7 +521,7 @@
       <joint name="camera_joint" type="fixed">
         <parent>base_link</parent>
         <child>camera_link</child>
-        <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
+        <pose>${camera_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <axis>
           <xyz>0 0 1</xyz>
         </axis>

@@ -39,11 +39,16 @@ controller_server:
       required_movement_radius: 0.2
       movement_time_allowance: 40.0
 
+    # Tightened from 0.25/0.5. That was loose enough that a goal clicked
+    # anywhere near the robot's start counted as "reached" almost instantly -
+    # any click within 25cm never actually drove anywhere. 0.12 is just above
+    # the 0.11 robot radius (the smallest tolerance that isn't asking the
+    # footprint to occupy a point smaller than itself); 0.3 rad is ~17 deg.
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.5
+      xy_goal_tolerance: 0.12
+      yaw_goal_tolerance: 0.3
 
     # DWB. Velocity limits match the real Burger and the DiffDrive plugin in
     # gz_slim_tb3.sdf.xacro - 0.22 m/s, 2.84 rad/s. Asking for more than the
@@ -75,7 +80,10 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
-      xy_goal_tolerance: 0.25
+      # Kept equal to general_goal_checker.xy_goal_tolerance above - DWB's own
+      # copy governs when it stops driving; a mismatch means the controller
+      # and the goal checker disagree about when the goal is actually reached.
+      xy_goal_tolerance: 0.12
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
       stateful: True

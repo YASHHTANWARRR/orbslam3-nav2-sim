@@ -255,10 +255,27 @@ private:
                 -1.0f, 0.0f, 0.0f,
                  0.0f, -1.0f, 0.0f;
 
-    const Eigen::Vector3f t =
+    const Eigen::Vector3f t_raw =
       R_opt2ros * (static_cast<float>(pose_scale_) * Twc.translation());
-    const Eigen::Matrix3f R = R_opt2ros * Twc.rotationMatrix() * R_opt2ros.transpose();
-    const Eigen::Quaternionf q(R);
+    const Eigen::Matrix3f R_raw = R_opt2ros * Twc.rotationMatrix() * R_opt2ros.transpose();
+
+    Eigen::Isometry3d T_map_cam_raw = Eigen::Isometry3d::Identity();
+    T_map_cam_raw.translate(Eigen::Vector3d(t_raw.x(), t_raw.y(), t_raw.z()));
+    T_map_cam_raw.rotate(Eigen::Quaterniond(Eigen::Quaternionf(R_raw).cast<double>()));
+
+    // T_map_cam_raw is in the CURRENT ORB-SLAM3 map's own coordinate frame.
+    // Every map reset after a tracking loss starts a brand new one at a new
+    // origin. correctAndAnchor applies the same re-anchoring used for
+    // map->odom here too - skipping this and publishing raw was the bug that
+    // made /orbslam3/pose and /orbslam3/path visibly teleport/zigzag on every
+    // reset even though the TF was already correct.
+    if (!correctAndAnchor(T_map_cam_raw)) {
+      return;  // TF not ready yet; nothing sane to publish
+    }
+    const Eigen::Isometry3d & T_map_cam = T_map_cam_corrected_;
+
+    const Eigen::Vector3d t = T_map_cam.translation();
+    const Eigen::Quaterniond q(T_map_cam.rotation());
 
     geometry_msgs::msg::PoseStamped ps;
     ps.header.stamp = stamp;
@@ -291,28 +308,28 @@ private:
       tf.transform.rotation = ps.pose.orientation;
       tf_broadcaster_->sendTransform(tf);
     }
-
-    if (publish_map_odom_) {
-      Eigen::Isometry3d T_map_cam = Eigen::Isometry3d::Identity();
-      T_map_cam.translate(Eigen::Vector3d(t.x(), t.y(), t.z()));
-      T_map_cam.rotate(Eigen::Quaterniond(q.w(), q.x(), q.y(), q.z()));
-      updateMapToOdom(T_map_cam);
-    }
   }
 
-  // Nav2 expects the localisation source to publish map -> odom: a *correction*
-  // on top of wheel odometry, not the robot pose itself. Publishing
-  // map -> base_footprint directly would fight the odom -> base_footprint that
-  // the DiffDrive plugin already broadcasts, giving base_footprint two parents.
+  // Re-anchors T_map_cam_raw (in the current map's own frame) onto the
+  // continuous "map" frame, and updates T_map_odom_ for broadcastMapToOdom()
+  // from the same anchor - this is the single place both corrections happen,
+  // so /orbslam3/pose, /orbslam3/path, the camera TF, and map->odom can never
+  // disagree about which map they are anchored to.
+  //
+  // Nav2 expects the localisation source to publish map -> odom: a
+  // *correction* on top of wheel odometry, not the robot pose itself.
+  // Publishing map -> base_footprint directly would fight the
+  // odom -> base_footprint that the DiffDrive plugin already broadcasts,
+  // giving base_footprint two parents.
   //
   //   map->odom = map->camera * (base->camera)^-1 * (odom->base)^-1
   //
   // base->camera and odom->base both come from TF, so the mounting offsets
   // stay in one place (the static publishers in sim.launch.py).
   //
-  // This only recomputes the correction. Broadcasting happens on a timer - see
-  // broadcastMapToOdom().
-  void updateMapToOdom(const Eigen::Isometry3d & T_map_cam)
+  // Returns false if TF is not ready yet, in which case nothing was updated
+  // and the caller should not publish.
+  bool correctAndAnchor(const Eigen::Isometry3d & T_map_cam_raw)
   {
     geometry_msgs::msg::TransformStamped base_cam_msg;
     geometry_msgs::msg::TransformStamped odom_base_msg;
@@ -324,36 +341,39 @@ private:
     } catch (const tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "map->odom skipped, TF not ready: %s", e.what());
-      return;
+        "pose publish skipped, TF not ready: %s", e.what());
+      return false;
     }
 
     const Eigen::Isometry3d T_base_cam = tf2::transformToEigen(base_cam_msg);
     const Eigen::Isometry3d T_odom_base = tf2::transformToEigen(odom_base_msg);
 
-    const Eigen::Isometry3d raw = T_map_cam * T_base_cam.inverse() * T_odom_base.inverse();
+    const Eigen::Isometry3d raw_chain =
+      T_map_cam_raw * T_base_cam.inverse() * T_odom_base.inverse();
 
     // Re-anchor after a tracking loss.
     //
     // ORB-SLAM3 starts a brand new map when tracking dies, and its origin is
-    // wherever the camera happened to be. Published raw, the map frame teleports
-    // and every outstanding Nav2 goal - which is expressed in map - becomes
-    // meaningless. The planner then returns "0 poses" and aborts.
+    // wherever the camera happened to be. Published raw, "map" teleports and
+    // every outstanding Nav2 goal - which is expressed in map - becomes
+    // meaningless, AND every published pose/path point jumps too.
     //
-    // Instead, pin the new map onto the old one so that map is CONTINUOUS at the
-    // instant tracking returns. Odometry carries the robot across the gap, which
-    // is what AMCL does when it loses confidence. Absolute accuracy drifts, but
-    // goals stay valid, which is what Nav2 needs.
+    // Instead, pin the new map onto the old one so "map" is CONTINUOUS at the
+    // instant tracking returns. Odometry carries the robot across the gap,
+    // which is what AMCL does when it loses confidence. Absolute accuracy
+    // drifts, but goals and the visualised path stay coherent.
     if (reanchor_pending_) {
       if (have_map_odom_) {
-        anchor_ = T_map_odom_ * raw.inverse();
+        anchor_ = T_map_odom_ * raw_chain.inverse();
         RCLCPP_WARN(get_logger(), "map re-anchored after tracking loss (map #%d)", ++resets_);
       }
       reanchor_pending_ = false;
     }
 
-    T_map_odom_ = anchor_ * raw;
+    T_map_odom_ = anchor_ * raw_chain;
+    T_map_cam_corrected_ = anchor_ * T_map_cam_raw;
     have_map_odom_ = true;
+    return true;
   }
 
   // Broadcast the correction continuously and post-dated, the way AMCL does.
@@ -384,6 +404,7 @@ private:
   bool was_tracking_{false};
   double transform_tolerance_{0.1};
   Eigen::Isometry3d T_map_odom_{Eigen::Isometry3d::Identity()};
+  Eigen::Isometry3d T_map_cam_corrected_{Eigen::Isometry3d::Identity()};
   Eigen::Isometry3d anchor_{Eigen::Isometry3d::Identity()};
   bool reanchor_pending_{false};
   int resets_{0};
