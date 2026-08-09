@@ -6,6 +6,8 @@ map — and Nav2 plans and drives on top of that estimate.
 
 **ROS 2 Jazzy** · **Gazebo Harmonic** (gz-sim 8.14) · **Ubuntu 24.04**
 
+<img width="560" height="170" alt="screencast_v4" src="https://github.com/user-attachments/assets/f4699c34-7957-4d9d-bedf-3651f1c650e6" />
+
 ---
 
 ## Architecture
