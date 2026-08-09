@@ -452,6 +452,29 @@ Each point is sent as its own `NavigateToPose` goal (zero-stamped, same as
 so it's not a real `FollowWaypoints` action, just the reliable single-goal path
 called in sequence.
 
+**Frames — read this if a waypoint ever lands somewhere unexpected.** Every
+coordinate in this script (presets, `--waypoints`, `--interior`) is a real
+Gazebo-world position — the same numbers in `textured_tb3_world.sdf` for a
+pillar or wall. `NavigateToPose` goals, though, are sent in the `map` frame:
+ORB-SLAM3's *own* frame, whose origin is wherever the camera happened to be on
+the first frame it ever tracked. `map` is not the Gazebo world frame, and the
+offset between them isn't fixed — it depends on exactly when tracking locked
+on, and shifts again on every re-anchor.
+
+An earlier version sent world coordinates straight through as if they were
+already in `map` — so `(1.8, 1.8)`, meant to be a room corner, actually went
+wherever `(1.8, 1.8)` happened to fall in SLAM's arbitrary frame. Fixed:
+`world_to_map()` converts every point at send time, using the live `map→odom`
+correction composed with the known, fixed spawn offset (`SPAWN_X/Y/YAW`,
+matching `sim.launch.py`'s defaults — pass `--spawn-x/-y/-yaw` if you launched
+with a different pose). Verified against ground truth: goal `(0.00, 0.65)`
+world converted to `(1.82, 1.27)` map, robot arrived, and true Gazebo `/odom`
+read `(1.91, 1.38)` against an expected `(2.00, 1.15)` — **~0.25 m of residual
+error**, consistent with ordinary monocular SLAM localization noise, not a
+frame bug. If you already have a coordinate that's confirmed correct in `map`
+frame (e.g. read off a working RViz click), pass `--frame map` to send it
+as-is, no conversion.
+
 Verified: sent, `SUCCEEDED`. Also observed a case where a leg stalled for
 minutes — a tracking-loss + re-anchor happened right as that goal was sent.
 That's the project's known monocular fragility (see "Tracking stability"
