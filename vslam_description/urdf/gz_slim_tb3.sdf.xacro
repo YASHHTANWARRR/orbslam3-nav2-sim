@@ -40,7 +40,11 @@
     <xacro:property name="cam_z" value="0.250"/>
     <!-- negative pitch = nose up in SDF -->
     <xacro:property name="cam_pitch" value="-0.0873"/>
-    <xacro:property name="mast_x" value="0.010"/>
+    <!-- Camera shares the lidar's post (x=-0.032) instead of sitting on its
+         own forward bracket - mounted directly above/behind the lidar on the
+         same mast. Both are well clear of each other in z (0.150 vs 0.250),
+         so the camera housing does not occlude the lidar's scan plane. -->
+    <xacro:property name="sensor_post_x" value="-0.032"/>
 
     <!-- colour scheme -->
     <xacro:property name="c_body" value="0.10 0.28 0.32"/>
@@ -95,14 +99,14 @@
           </material>
         </visual>
 
-        <!-- camera mast -->
-        <!-- post carrying the lidar above the camera bracket -->
-        <visual name="lidar_post_visual">
-          <pose>-0.032 0 ${(deck_z + 0.150) / 2} 0 0 0</pose>
+        <!-- Single post carrying both the lidar (partway up) and the camera
+             (on top, directly behind/above the lidar) - see sensor_post_x. -->
+        <visual name="sensor_post_visual">
+          <pose>${sensor_post_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
           <geometry>
             <cylinder>
               <radius>0.010</radius>
-              <length>${0.150 - deck_z}</length>
+              <length>${cam_z - deck_z}</length>
             </cylinder>
           </geometry>
           <material>
@@ -111,25 +115,12 @@
           </material>
         </visual>
 
-        <visual name="mast_visual">
-          <pose>${mast_x} 0 ${(deck_z + cam_z) / 2} 0 0 0</pose>
+        <!-- small mounting cap connecting the post top to the camera housing -->
+        <visual name="camera_mount_visual">
+          <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
           <geometry>
             <box>
-              <size>0.016 0.030 ${cam_z - deck_z}</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.05 0.05 0.06 1</ambient>
-            <diffuse>${c_dark} 1</diffuse>
-          </material>
-        </visual>
-
-        <!-- bracket arm from mast to camera -->
-        <visual name="mast_arm_visual">
-          <pose>${(mast_x + 0.032) / 2} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
-          <geometry>
-            <box>
-              <size>0.030 0.024 0.008</size>
+              <size>0.024 0.024 0.008</size>
             </box>
           </geometry>
           <material>
@@ -413,12 +404,12 @@
         </collision>
       </link>
 
-      <!-- forward monocular camera, centred on y, at the height the lidar
-           tower used to occupy. 480x480 @ 30 Hz.
+      <!-- forward monocular camera, centred on y, mounted directly above/
+           behind the lidar on the shared sensor post. 480x480 @ 30 Hz.
            Measured intrinsics: fx = fy = 415.787, cx = cy = 240.
            These MUST stay in sync with vslam_slam/config/tb3.yaml. -->
       <link name="camera_link">
-        <pose>0.032 0 ${cam_z} 0 ${cam_pitch} 0</pose>
+        <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <inertial>
           <pose>0 0 0 0 0 0</pose>
           <inertia>
@@ -520,7 +511,7 @@
       <joint name="camera_joint" type="fixed">
         <parent>base_link</parent>
         <child>camera_link</child>
-        <pose>0.032 0 ${cam_z} 0 ${cam_pitch} 0</pose>
+        <pose>${sensor_post_x} 0 ${cam_z} 0 ${cam_pitch} 0</pose>
         <axis>
           <xyz>0 0 1</xyz>
         </axis>

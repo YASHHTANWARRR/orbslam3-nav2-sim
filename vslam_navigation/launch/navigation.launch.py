@@ -60,6 +60,15 @@ def generate_launch_description():
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',
              parameters=[{'autostart': autostart, 'node_names': lifecycle_nodes}]),
+
+        # See goal_relay.py: the RViz "Nav2 Goal" toolbar button and the
+        # Navigation 2 panel stamp goals with WALL time from an internal node
+        # nav2_rviz_plugins creates without use_sim_time, so every goal sent
+        # that way aborts immediately regardless of where you clicked. This
+        # node relays the plain "2D Goal Pose" tool instead, which correctly
+        # respects use_sim_time because it runs on RViz's main node.
+        Node(package='vslam_navigation', executable='goal_relay.py',
+             name='goal_relay', output='screen'),
     ])
 
     return LaunchDescription(args + [nav2_nodes])

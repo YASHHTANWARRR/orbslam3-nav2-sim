@@ -48,6 +48,13 @@ def generate_launch_description():
         DeclareLaunchArgument('nav', default_value='false',
                               description='Start Nav2. Needs SLAM tracking first, '
                                           'since map->odom comes from it.'),
+        DeclareLaunchArgument('wander', default_value='true',
+                              description='Auto-drive a gentle forward/turn pattern '
+                                          'once the robot spawns, to bootstrap SLAM '
+                                          'without a manual /cmd_vel command'),
+        DeclareLaunchArgument('wander_duration', default_value='10.0',
+                              description='Seconds to wander before handing back '
+                                          'control of /cmd_vel'),
     ]
 
     simulation = IncludeLaunchDescription(
@@ -65,6 +72,27 @@ def generate_launch_description():
             'use_imu': LaunchConfiguration('use_imu'),
         }.items(),
         condition=IfCondition(slam),
+    )
+
+    # Waits for /odom (proof Gazebo actually spawned the robot) rather than a
+    # fixed delay, then drives a gentle forward/turn pattern for wander_duration
+    # seconds and stops. Removes the need to manually publish /cmd_vel just to
+    # get SLAM's map to initialise.
+    #
+    # Can overlap with Nav2's controller if Gazebo is slow to start and
+    # wander_duration runs past the fixed 12s Nav2 delay below - both would
+    # publish /cmd_vel briefly. Harmless (both commands are gentle), but if it
+    # bothers you, pass wander:=false when using nav:=true.
+    wander = Node(
+        package='vslam_slam',
+        executable='wander_node.py',
+        name='wander_node',
+        output='screen',
+        parameters=[{
+            'duration': LaunchConfiguration('wander_duration'),
+            'use_sim_time': True,
+        }],
+        condition=IfCondition(LaunchConfiguration('wander')),
     )
 
     # Fallback only. With SLAM running, the SLAM node publishes the real
@@ -117,4 +145,4 @@ def generate_launch_description():
     )
 
     return LaunchDescription(
-        args + [simulation, slam_stack, map_to_odom, navigation, rviz_slam, rviz_nav])
+        args + [simulation, slam_stack, wander, map_to_odom, navigation, rviz_slam, rviz_nav])

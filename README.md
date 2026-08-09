@@ -103,12 +103,21 @@ per-package launch files rather than declaring nodes itself.
 ros2 launch vslam_bringup bringup_sim.launch.py
 ```
 
-Then **drive forward**. Monocular SLAM initialises from *translation* — pure
-rotation will never converge:
+The robot then **drives itself** for ~10 s to bootstrap SLAM — no manual
+`/cmd_vel` needed. `wander_node` waits for `/odom` (proof the robot has actually
+spawned) rather than a fixed delay, then drives a **randomised** path — a
+different sequence of forward/turn segments every launch (`build_random_path()`
+in `wander_node.py`), forward-heavy with short gentle turns — and hands control
+back. Pin `seed` for a reproducible path, or disable it entirely with
+`wander:=false` and drive manually yourself:
 
 ```bash
 ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist '{linear: {x: 0.08}}'
 ```
+
+Monocular SLAM initialises from *translation* — pure rotation will never
+converge, which is why the wander pattern is forward-heavy with only short
+gentle turns.
 
 With autonomous navigation:
 
@@ -126,6 +135,8 @@ ros2 launch vslam_bringup bringup_sim.launch.py nav:=true
 | `nav` | `false` | Start Nav2 (delayed 12 s) |
 | `show_viewer` | `true` | ORB-SLAM3's own Pangolin window |
 | `pose_scale` | `3.2068` | Monocular scale factor |
+| `wander` | `true` | Auto-drive to bootstrap SLAM; `false` for manual control only |
+| `wander_duration` | `10.0` | Seconds to auto-drive before handing back control |
 
 ---
 
@@ -182,15 +193,17 @@ replaced rather than patched.
 
 ## The robot
 
-TurtleBot3 Burger with the upper two decks cut off, a forward monocular camera
-on an L-bracket, and the LDS lidar raised on a post. Geometry follows the
-official ROBOTIS burger model rather than being re-derived.
+TurtleBot3 Burger with the upper two decks cut off, and the LDS lidar and a
+forward monocular camera sharing a single post — camera on top, tilted 5° up.
+Geometry follows the official ROBOTIS burger model rather than being re-derived.
 
 ```
-        lidar (base_scan)  z = 0.150
+              camera        z = 0.250   x = -0.032, tilted 5° up
               ▲
-              │ post
-     camera ──┤            z = 0.115   x = +0.032
+              │
+        lidar (base_scan)  z = 0.150   x = -0.032   (same post)
+              ▲
+              │ shared post
               │
         ══════╧══════      deck top    z = 0.060
         │  burger base │
@@ -204,9 +217,9 @@ official ROBOTIS burger model rather than being re-derived.
 | Wheels | `y = ±0.080`, radius `0.033` | matches real Burger |
 | `wheel_separation` | `0.160` | **must** equal `2 × wheel_y` |
 | Max speed | `0.22 m/s`, `2.84 rad/s` | real Burger limits |
-| Camera | 480×480 @ 30 Hz, `hfov 1.047` | at `z=0.115`, centred |
+| Camera | 480×480 @ 30 Hz, `hfov 1.047` | `x=-0.032, z=0.250`, 5° up |
+| Lidar | 360 samples, 0.12–3.5 m, 10 Hz | `x=-0.032, z=0.150`, same post as camera |
 | Intrinsics | `fx = fy = 415.787`, `cx = cy = 240` | zero distortion |
-| Lidar | 360 samples, 0.12–3.5 m, 10 Hz | at `z=0.150` |
 
 **Two constraints that cause silent failures:**
 
@@ -218,8 +231,9 @@ Intrinsics are **measured** from `/camera/camera_info`, not computed from the FO
 formula (which gives 415.69, off by 0.1). They live in two files and must stay in
 sync: `gz_slim_tb3.sdf.xacro` and `vslam_slam/config/tb3.yaml`.
 
-The lidar sits **above** the camera bracket (top at `z=0.119`). Mounted lower,
-the bracket appears in the scan and blinds the robot forward.
+Camera and lidar share one post at `x=-0.032`, separated in height (`z=0.150`
+vs `z=0.250`) so neither occludes the other's field of view — the camera
+housing sits well clear of the lidar's horizontal scan plane.
 
 ---
 
@@ -544,6 +558,10 @@ diet for a feature tracker. Raised to `z=0.250` with a 5° upward tilt; floor no
 enters the frame at ~0.54 m and pillars/walls dominate. The static
 `camera_link` TF in `sim.launch.py` was updated to match — if it disagrees with
 the xacro, `map -> odom` silently inherits the mounting error.
+
+The camera was later moved from its own forward bracket onto the lidar's post
+(`x=-0.032`, same as the lidar), directly above it — one sensor mast instead of
+two separate mounts. Both static TFs and the xacro were updated together.
 
 The world was also enriched to give the raised view something to track: walls
 raised from 1.0 m to 1.8 m with **four distinct textures** (four identical walls

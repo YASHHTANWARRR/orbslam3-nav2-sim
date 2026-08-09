@@ -65,6 +65,7 @@ install(TARGETS mono_slam_node DESTINATION lib/${PROJECT_NAME})
 # non-executable source gives "executable not found on the libexec directory"
 install(PROGRAMS
   scripts/calibrate_scale.py
+  scripts/wander_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

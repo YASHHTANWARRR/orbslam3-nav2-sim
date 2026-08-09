@@ -8,4 +8,11 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+# chmod +x in the source tree matters: --symlink-install only symlinks, so a
+# non-executable source gives "executable not found on the libexec directory"
+install(PROGRAMS
+  scripts/goal_relay.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

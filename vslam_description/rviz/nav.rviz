@@ -248,7 +248,18 @@ Visualization Manager:
     - Class: rviz_default_plugins/FocusCamera
     - Class: rviz_default_plugins/Measure
       Line color: 128; 128; 0
-    - Class: nav2_rviz_plugins/GoalTool
+    # "2D Goal Pose", NOT nav2_rviz_plugins/GoalTool ("Nav2 Goal"). The latter
+    # sends its action goal from an internal node without use_sim_time, which
+    # stamps every goal with wall-clock time against a sim-time TF tree and
+    # aborts unconditionally. This tool publishes to /goal_pose instead, which
+    # goal_relay.py picks up and sends correctly - see that file.
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /goal_pose
   Transformation:
     Current:
       Class: rviz_default_plugins/TF

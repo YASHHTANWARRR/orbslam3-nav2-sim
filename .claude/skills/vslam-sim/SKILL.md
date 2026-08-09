@@ -296,10 +296,29 @@ Three things that cost real debugging:
   `robot_state_publisher` (which needs URDF). `sim.launch.py` publishes them as
   static transforms that must be kept in sync with the xacro joint poses.
 
-The lidar sits at `z=0.150` on a post so it clears the camera bracket
-(top at `z=0.119`); mounted lower, the bracket blinds it forward.
+Camera and lidar share **one post** at `sensor_post_x = -0.032` — camera on top
+(`z=0.250`, 5° up), lidar partway (`z=0.150`). Not just aesthetic: keep them
+separated in z, not x, or the camera housing will sit in the lidar's horizontal
+scan plane and blind it forward. If either mount pose changes in the xacro, the
+matching static TF in `sim.launch.py` (`tf_camera_link`) must change with it, or
+`map -> odom` silently inherits the error.
 
 Verified: two `NavigateToPose` goals SUCCEEDED, within 0.13 m and 0.23 m.
+
+## Bootstrapping without manual /cmd_vel
+
+`vslam_slam/scripts/wander_node.py` auto-drives once `/odom` appears (proof
+Gazebo actually spawned the robot — not a fixed delay, which would be wrong by
+±15s between GUI and headless runs). It builds a **randomised** path
+(`build_random_path()`, pure function, no ROS) of forward/turn segments, forward-
+heavy with short gentle turns for the same reason Nav2's rotation limits are
+capped — pure rotation kills monocular tracking. Runs for `duration` (default
+10s) then publishes zero once and stops. `seed` param (default -1 = unseeded)
+pins a reproducible path.
+
+Wired into `bringup_sim.launch.py` as `wander:=true` by default. Can overlap
+with Nav2's fixed-delay startup if Gazebo is slow; harmless (both gentle) but
+pass `wander:=false` with `nav:=true` to avoid it.
 
 ## Tracking stability
 

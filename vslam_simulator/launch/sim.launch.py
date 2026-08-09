@@ -131,9 +131,10 @@ def generate_launch_description():
                   'base_footprint', 'base_link'),
         static_tf('tf_base_scan', ['-0.032', '0', '0.150'], ['0', '0', '0'],
                   'base_link', 'base_scan'),
-        # pitch -0.0873 = 5 deg nose-up, matching cam_pitch in the xacro.
-        # If it disagrees with the xacro, map->odom inherits the error.
-        static_tf('tf_camera_link', ['0.032', '0', '0.250'], ['0', '-0.0873', '0'],
+        # pitch -0.0873 = 5 deg nose-up, x=-0.032 = shares the lidar's post
+        # (sensor_post_x), matching the xacro. If either disagrees with the
+        # xacro, map->odom inherits the error.
+        static_tf('tf_camera_link', ['-0.032', '0', '0.250'], ['0', '-0.0873', '0'],
                   'base_link', 'camera_link'),
     ]
 
