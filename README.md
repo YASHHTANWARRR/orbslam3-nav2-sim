@@ -508,7 +508,52 @@ The DiffDrive plugin still permits 2.84 rad/s; Nav2 deliberately uses a fraction
 | `minThFAST` | 7 | **4** |
 
 **Result:** a full navigation run with **zero tracking losses** and a single map,
-versus constant re-initialisation before.
+versus constant re-initialisation before, on that test run. Under sustained
+multi-goal navigation, losses still occur — see "Map continuity" and "Camera
+geometry" below for what further reduced them, and "Tracking stability" for
+what remains.
+
+## Map continuity across tracking losses
+
+Even with the above, ORB-SLAM3 spawns a **new map with a new origin** every time
+tracking recovers from a loss. Publishing that origin raw made `map` teleport,
+which broke every outstanding Nav2 goal — the planner would return
+`Resulting plan has 0 poses in it` and abort, because the goal (expressed in
+`map`) no longer meant anything.
+
+`mono_slam_node` now **re-anchors** each new map onto the previous one at the
+moment tracking returns, using odometry to bridge the gap — the same idea AMCL
+uses when it loses confidence. `map` stays continuous through a reset; only
+metric accuracy drifts, not goal validity.
+
+Also fixed: the inflation radius (0.35 m) very nearly sealed the gaps between
+pillars (0.30 m diameter on a 1.1 m grid, leaving a 0.10 m corridor against a
+0.22 m-wide robot) so the planner would refuse to thread the grid at all.
+Lowered to 0.18 m, corridor width 0.44 m.
+
+And the progress checker (0.5 m / 15 s) was incompatible with the capped
+rotation speed — a slow in-place turn could exceed 15 s without moving 0.5 m
+and get aborted as "Failed to make progress" even when navigating correctly.
+Relaxed to 0.2 m / 40 s.
+
+## Camera geometry
+
+The camera sat at `z=0.115`, horizontal. From ~0.2 m out, the **bottom half of
+every frame was floor** — close, low-parallax, and repetitively textured, a poor
+diet for a feature tracker. Raised to `z=0.250` with a 5° upward tilt; floor now
+enters the frame at ~0.54 m and pillars/walls dominate. The static
+`camera_link` TF in `sim.launch.py` was updated to match — if it disagrees with
+the xacro, `map -> odom` silently inherits the mounting error.
+
+The world was also enriched to give the raised view something to track: walls
+raised from 1.0 m to 1.8 m with **four distinct textures** (four identical walls
+would alias the same way nine identical pillars did), plus five boxes at varying
+heights and positions.
+
+**Measured across a five-goal run:** tracking losses 11 → 8, planner `0 poses`
+failures 2 → 0, goals succeeded 3/5 → 4/5. The fifth goal in that run did not
+ABORT — it was still recovering from consecutive tracking losses when the test's
+90 s timeout expired. Real, if milder, instance of the same weakness.
 
 ## Visual-inertial mode (does not currently work)
 
