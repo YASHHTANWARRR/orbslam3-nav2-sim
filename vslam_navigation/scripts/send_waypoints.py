@@ -366,6 +366,8 @@ def main():
         demo()
         return
 
+    global MAX_RETRIES, STUCK_TIMEOUT_SEC
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--waypoints', default=None,
                          help="'x1,y1 x2,y2 ...' in the map frame; "
@@ -398,7 +400,6 @@ def main():
                          help='seconds with no result before treating a goal as stuck')
     args, ros_args = parser.parse_known_args()
 
-    global MAX_RETRIES, STUCK_TIMEOUT_SEC
     MAX_RETRIES = args.retries
     STUCK_TIMEOUT_SEC = args.stuck_timeout
 
